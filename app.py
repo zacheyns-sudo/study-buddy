@@ -1,0 +1,317 @@
+import os
+import io
+import json
+from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory
+from flask_cors import CORS
+import anthropic
+
+app = Flask(__name__)
+CORS(app)
+app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB
+
+_key = os.environ.get("ANTHROPIC_API_KEY", "")
+client = anthropic.Anthropic(api_key=_key)
+
+MAX_CHARS = 60_000
+ALLOWED_EXT = {".docx", ".pdf", ".pptx", ".xlsx"}
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SYSTEM PROMPTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+SUPERVISOR_PROMPT = """You are a senior academic supervisor reviewing a student's work. You are invested in their growth and development as a thinker and writer. You are strict about academic standards and intellectual rigour — you won't accept vague claims, unsupported assertions, or lazy structure — but your tone is engaged and mentoring, like sitting across a desk working through the paper together. Every comment you make teaches something; you never just flag a problem without explaining why it matters.
+
+You review work across six dimensions:
+- grammar: spelling, punctuation, syntax
+- content: argument quality, logical coherence, depth of analysis
+- structure: organisation, paragraph construction, flow between ideas, introduction/conclusion quality
+- clarity: ambiguous phrasing, wordiness, passive voice overuse, readability
+- evidence: use of data, sourcing, statistical claims, quality of supporting material
+- citations: APA 7 compliance — in-text format (Author, Year), reference list ordering, DOIs, author name formatting
+
+CRITICAL RULE ON SUGGESTIONS: Your suggestion field must tell the student HOW to think about improving this — the approach, the structure, what to consider. You must NEVER write replacement prose. You are guiding their thinking, not writing for them. A suggestion like "Lead with your main finding, then explain the mechanism" is good. A suggestion like "Replace with: 'The results show...'" is forbidden.
+
+Output format: NDJSON — one JSON object per line, nothing else. No preamble, no markdown, no code fences.
+
+Each comment:
+{"paragraph_index": 2, "type": "content", "quote": "verbatim phrase from text ≤15 words", "comment": "what is weak and why it matters", "suggestion": "how the student should approach fixing this", "severity": "low|medium|high"}
+
+After all comments, one final line:
+{"type": "summary", "overall_grade": null, "summary_text": "Conversational 2-3 sentence summary: what is working well, the single most important thing to fix before the next draft, and one concrete action to take."}
+
+Rules:
+- paragraph_index must be an integer matching a [N] index present in the document
+- quote must be verbatim from that paragraph, ≤15 words
+- type is exactly one of: grammar, content, structure, clarity, evidence, citations
+- severity: low = minor polish, medium = noticeably weakens the work, high = fundamental problem
+- emit 5–30 comments depending on document length; prioritise issues with the most impact
+- overall_grade is always null in supervisor mode
+- never write a generic comment — name the specific problem and explain why it matters"""
+
+GRADING_PROMPT = """You are a university professor formally evaluating a student's submitted work. You are not a mentor here — you are an assessor. You evaluate against academic standards without warmth. Your comments read like written marginal notes on a returned paper. You are thorough, you do not skip minor issues, and your APA 7 enforcement is strict.
+
+You evaluate across six dimensions:
+- grammar: spelling, punctuation, syntax
+- content: argument quality, logical coherence, analytical depth, factual accuracy
+- structure: organisation, paragraph construction, flow, introduction/conclusion quality
+- clarity: ambiguous phrasing, wordiness, passive voice, readability
+- evidence: use of data, sourcing, statistical claims, missing or weak support
+- citations: APA 7 — in-text format (Author, Year), reference list alphabetical order, DOIs required where available, author name formatting (Last, F. M.), hanging indents, et al. usage
+
+CRITICAL RULE ON SUGGESTIONS: Your suggestion must tell the student what they need to do conceptually — what kind of evidence to find, what structural change to make, what the argument is missing. You must NEVER write replacement prose or dictate exact wording. A suggestion like "This needs a primary source from a peer-reviewed journal published after 2015" is good. A suggestion like "Replace with: 'According to Smith (2020)...'" is forbidden.
+
+Output format: NDJSON — one JSON object per line, nothing else. No preamble, no markdown, no code fences.
+
+Each comment:
+{"paragraph_index": 2, "type": "citations", "quote": "verbatim phrase from text ≤15 words", "comment": "precise identification of the problem and its academic impact", "suggestion": "what the student needs to do to address this", "severity": "low|medium|high"}
+
+After all comments, one final line:
+{"type": "summary", "overall_grade": "B-", "summary_text": "2-4 sentence formal assessment: the submission's main strength, its most critical academic failure, and whether it meets the standard for this level of study."}
+
+Rules:
+- paragraph_index must be an integer matching a [N] index present in the document
+- quote must be verbatim from that paragraph, ≤15 words
+- type is exactly one of: grammar, content, structure, clarity, evidence, citations
+- severity: low = minor, medium = weakens the grade, high = submission-level failure
+- emit 5–40 comments; cover everything, do not skip minor issues in grading mode
+- overall_grade uses A+, A, A-, B+, B, B-, C+, C, C-, D, F
+- never write a generic comment"""
+
+CHAT_PROMPT = """You are a senior academic supervisor having a conversation with a student about their paper. You have already read the document (it is in this conversation). You are engaged, direct, and genuinely interested in helping them improve their thinking and writing. You explain things clearly, you ask good questions back when it helps them think, and you never just hand them the answer — you guide them toward it.
+
+You do NOT write prose for the student. If they ask you to rewrite a sentence or paragraph, explain what is wrong with it and how they should think about fixing it, but do not produce a corrected version. Your role is to develop their ability, not substitute for it.
+
+Respond in plain conversational prose — no bullet lists unless the student asks for one, no NDJSON, no markdown headers. Keep responses focused and useful, not lengthy."""
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  FILE PARSING
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _merge_pdf_lines(lines):
+    """Rejoin PDF lines that were split mid-sentence."""
+    merged, buf = [], ""
+    for line in lines:
+        if not line.strip():
+            if buf:
+                merged.append(buf.strip())
+                buf = ""
+            continue
+        if buf and not buf[-1] in ".?!:":
+            buf += " " + line.strip()
+        else:
+            if buf:
+                merged.append(buf.strip())
+            buf = line.strip()
+    if buf:
+        merged.append(buf.strip())
+    return [m for m in merged if m]
+
+
+def parse_docx(file_bytes):
+    import docx
+    doc = docx.Document(io.BytesIO(file_bytes))
+    paragraphs = []
+    for para in doc.paragraphs:
+        t = para.text.strip()
+        if t:
+            paragraphs.append(t)
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells if c.text.strip()]
+            if cells:
+                paragraphs.append(" | ".join(cells))
+    return paragraphs
+
+
+def parse_pdf(file_bytes):
+    import pdfplumber
+    lines = []
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text(x_tolerance=2, y_tolerance=3)
+            if text:
+                for line in text.split("\n"):
+                    lines.append(line.strip())
+    return _merge_pdf_lines(lines)
+
+
+def parse_pptx(file_bytes):
+    from pptx import Presentation
+    prs = Presentation(io.BytesIO(file_bytes))
+    paragraphs = []
+    for slide_num, slide in enumerate(prs.slides, 1):
+        texts = []
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for para in shape.text_frame.paragraphs:
+                    t = para.text.strip()
+                    if t:
+                        texts.append(t)
+        if texts:
+            paragraphs.append(f"[Slide {slide_num}] " + " | ".join(texts))
+    return paragraphs
+
+
+def parse_xlsx(file_bytes):
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    paragraphs = []
+    for sheet in wb.worksheets:
+        paragraphs.append(f"[Sheet: {sheet.title}]")
+        for row in sheet.iter_rows(values_only=True):
+            cells = [str(c) for c in row if c is not None and str(c).strip()]
+            if cells:
+                paragraphs.append(" | ".join(cells))
+    wb.close()
+    return paragraphs
+
+
+def extract_text(filename, file_bytes):
+    ext = os.path.splitext(filename)[1].lower()
+    if ext == ".docx":  return parse_docx(file_bytes)
+    if ext == ".pdf":   return parse_pdf(file_bytes)
+    if ext == ".pptx":  return parse_pptx(file_bytes)
+    if ext == ".xlsx":  return parse_xlsx(file_bytes)
+    raise ValueError(f"Unsupported file type: {ext}")
+
+
+def chunk_paragraphs(paragraphs, max_chars=MAX_CHARS):
+    result, total = [], 0
+    for p in paragraphs:
+        if total + len(p) > max_chars:
+            break
+        result.append(p)
+        total += len(p) + 2
+    return result, len(result) < len(paragraphs)
+
+
+def numbered_doc(paragraphs):
+    return "\n\n".join(f"[{i}] {p}" for i, p in enumerate(paragraphs) if p.strip())
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STREAMING GENERATORS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _review_stream(paragraphs, mode):
+    prompt = GRADING_PROMPT if mode == "grading" else SUPERVISOR_PROMPT
+    doc = numbered_doc(paragraphs)
+    with client.messages.stream(
+        model="claude-sonnet-4-6",
+        max_tokens=4096,
+        system=[{"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": f"Please review the following document:\n\n{doc}"}],
+    ) as stream:
+        for text in stream.text_stream:
+            yield text
+
+
+def _chat_stream(messages):
+    with client.messages.stream(
+        model="claude-sonnet-4-6",
+        max_tokens=2048,
+        system=[{"type": "text", "text": CHAT_PROMPT, "cache_control": {"type": "ephemeral"}}],
+        messages=messages,
+    ) as stream:
+        for text in stream.text_stream:
+            yield text
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ROUTES
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/")
+def index():
+    return send_from_directory(".", "index.html")
+
+
+@app.route("/api/upload", methods=["POST"])
+def upload():
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    f = request.files["file"]
+    filename = f.filename or ""
+    ext = os.path.splitext(filename)[1].lower()
+
+    if ext not in ALLOWED_EXT:
+        return jsonify({"error": f"Unsupported file type. Please upload .docx, .pdf, .pptx, or .xlsx"}), 400
+
+    try:
+        file_bytes = f.read()
+    except Exception:
+        return jsonify({"error": "Could not read file"}), 422
+
+    try:
+        paragraphs = extract_text(filename, file_bytes)
+    except Exception as e:
+        return jsonify({"error": f"Could not parse file: {str(e)}"}), 422
+
+    if not paragraphs:
+        return jsonify({"error": "No readable text found in this file."}), 422
+
+    trimmed, truncated = chunk_paragraphs(paragraphs)
+    return jsonify({
+        "paragraphs": trimmed,
+        "truncated": truncated,
+        "char_count": sum(len(p) for p in trimmed)
+    })
+
+
+@app.route("/api/review", methods=["POST"])
+def review():
+    data = request.get_json(silent=True) or {}
+    paragraphs = data.get("paragraphs", [])
+    mode = data.get("mode", "supervisor")
+
+    if not paragraphs:
+        return jsonify({"error": "No paragraphs provided"}), 400
+    if mode not in ("supervisor", "grading"):
+        mode = "supervisor"
+
+    try:
+        return Response(
+            stream_with_context(_review_stream(paragraphs, mode)),
+            content_type="text/plain;charset=utf-8"
+        )
+    except Exception as e:
+        return jsonify({"error": f"AI service error: {str(e)}"}), 502
+
+
+@app.route("/api/chat", methods=["POST"])
+def chat():
+    data = request.get_json(silent=True) or {}
+    paragraphs = data.get("paragraphs", [])
+    history    = data.get("history", [])
+    user_msg   = (data.get("message") or "").strip()
+
+    if not user_msg:
+        return jsonify({"error": "No message provided"}), 400
+
+    if history:
+        messages = history + [{"role": "user", "content": user_msg}]
+    else:
+        if not paragraphs:
+            return jsonify({"error": "No document loaded"}), 400
+        doc = numbered_doc(paragraphs)
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": f"Here is the document we'll be discussing:\n\n{doc}",
+                 "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": user_msg}
+            ]
+        }]
+
+    try:
+        return Response(
+            stream_with_context(_chat_stream(messages)),
+            content_type="text/plain;charset=utf-8"
+        )
+    except Exception as e:
+        return jsonify({"error": f"AI service error: {str(e)}"}), 502
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5557))
+    print(f"Study Buddy running → http://localhost:{port}")
+    app.run(host="0.0.0.0", port=port, debug=False)

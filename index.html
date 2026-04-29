@@ -1,0 +1,799 @@
+<!DOCTYPE html><script>(function(){const t=localStorage.getItem('sb_theme');if(t==='dark'||(t==null&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark');})();</script>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Study Buddy</title>
+<style>
+/* ── Reset ─────────────────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:15px;-webkit-text-size-adjust:100%}
+button,textarea,input{font:inherit}
+
+/* ── Tokens ─────────────────────────────────────────────────────────────────── */
+:root{
+  --bg:#f7f3ed;--surface:#fefcf8;--surface-2:#f0ebe3;--surface-3:#e8e1d8;
+  --border:#ddd6cc;--border-2:#ccc4b8;
+  --text:#1c1814;--muted:#857970;--muted-2:#b0a89e;
+  --accent:#3d6b52;--accent-dim:rgba(61,107,82,.12);--accent-hover:#2f5340;
+  --danger:#c0392b;
+  --top-h:52px;
+
+  --c-grammar:#dc2626;   --c-grammar-bg:#fef2f2;   --c-grammar-bd:#fecaca;
+  --c-content:#ea580c;   --c-content-bg:#fff7ed;   --c-content-bd:#fed7aa;
+  --c-structure:#2563eb; --c-structure-bg:#eff6ff;  --c-structure-bd:#bfdbfe;
+  --c-clarity:#ca8a04;   --c-clarity-bg:#fefce8;   --c-clarity-bd:#fde68a;
+  --c-evidence:#7c3aed;  --c-evidence-bg:#f5f3ff;  --c-evidence-bd:#ddd6fe;
+  --c-citations:#0891b2; --c-citations-bg:#ecfeff; --c-citations-bd:#a5f3fc;
+
+  --r:8px;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:0 4px 12px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);
+}
+html.dark{
+  --bg:#131110;--surface:#1e1b18;--surface-2:#252118;--surface-3:#2e2920;
+  --border:#352f28;--border-2:#453e36;
+  --text:#f2ede6;--muted:#7a7168;--muted-2:#4e4840;
+  --accent:#5a9970;--accent-dim:rgba(90,153,112,.15);--accent-hover:#6aad80;
+  --shadow:0 1px 3px rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.2);
+  --shadow-md:0 4px 12px rgba(0,0,0,.4),0 2px 4px rgba(0,0,0,.2);
+
+  --c-grammar-bg:rgba(220,38,38,.12);   --c-grammar-bd:rgba(220,38,38,.25);
+  --c-content-bg:rgba(234,88,12,.12);   --c-content-bd:rgba(234,88,12,.25);
+  --c-structure-bg:rgba(37,99,235,.12); --c-structure-bd:rgba(37,99,235,.25);
+  --c-clarity-bg:rgba(202,138,4,.12);   --c-clarity-bd:rgba(202,138,4,.25);
+  --c-evidence-bg:rgba(124,58,237,.12); --c-evidence-bd:rgba(124,58,237,.25);
+  --c-citations-bg:rgba(8,145,178,.12); --c-citations-bd:rgba(8,145,178,.25);
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.6;min-height:100vh}
+
+/* ── Top bar ────────────────────────────────────────────────────────────────── */
+#top-bar{
+  position:fixed;top:0;left:0;right:0;height:var(--top-h);
+  background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 20px;gap:12px;z-index:100;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+}
+#top-bar .logo{font-weight:700;font-size:1rem;letter-spacing:-.01em;color:var(--text);flex:1}
+#top-bar .logo span{color:var(--accent)}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 14px;border-radius:6px;border:1px solid var(--border);
+  background:var(--surface-2);color:var(--text);cursor:pointer;
+  font-size:.8rem;font-weight:500;transition:background .12s,border-color .12s;
+}
+.btn:hover{background:var(--surface-3);border-color:var(--border-2)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-accent:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn-ghost:hover{background:var(--surface-2);border-color:var(--border);color:var(--text)}
+#theme-btn{width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;font-size:1rem}
+
+/* ── Upload screen ──────────────────────────────────────────────────────────── */
+#upload-screen{
+  min-height:calc(100vh - var(--top-h));
+  padding-top:var(--top-h);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:16px;padding:calc(var(--top-h) + 40px) 24px 40px;
+}
+.upload-heading{font-size:1.5rem;font-weight:700;text-align:center}
+.upload-sub{color:var(--muted);text-align:center;max-width:400px;font-size:.9rem}
+#drop-zone{
+  width:100%;max-width:480px;
+  border:2px dashed var(--border-2);border-radius:var(--r);
+  background:var(--surface);padding:48px 32px;
+  text-align:center;cursor:pointer;transition:border-color .15s,background .15s;
+}
+#drop-zone:hover,#drop-zone.drag-over{border-color:var(--accent);background:var(--accent-dim)}
+#drop-zone .dz-icon{font-size:2.5rem;margin-bottom:12px;display:block}
+#drop-zone .dz-label{font-weight:600;color:var(--text);margin-bottom:4px}
+#drop-zone .dz-sub{font-size:.8rem;color:var(--muted)}
+#drop-zone .dz-types{margin-top:14px;display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.type-pill{font-size:.7rem;font-weight:600;padding:3px 8px;border-radius:4px;
+           background:var(--surface-2);border:1px solid var(--border);color:var(--muted);letter-spacing:.04em}
+#file-input{display:none}
+.upload-error{
+  max-width:480px;width:100%;padding:10px 14px;border-radius:6px;
+  background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:.85rem;
+  display:none;
+}
+html.dark .upload-error{background:rgba(220,38,38,.12);border-color:rgba(220,38,38,.3);color:#fca5a5}
+
+/* ── Review screen ──────────────────────────────────────────────────────────── */
+#review-screen{
+  display:none;
+  padding-top:var(--top-h);
+  height:100vh;
+  overflow:hidden;
+}
+#review-screen.active{display:flex}
+
+/* ── Document panel ─────────────────────────────────────────────────────────── */
+#doc-panel{
+  width:60%;border-right:1px solid var(--border);
+  overflow-y:auto;padding:24px;
+  display:flex;flex-direction:column;gap:4px;
+}
+#doc-filename{font-size:.75rem;font-weight:600;color:var(--muted);
+              text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+.truncation-banner{
+  padding:8px 12px;border-radius:6px;background:#fefce8;border:1px solid #fde68a;
+  color:#854d0e;font-size:.8rem;margin-bottom:12px;display:none;
+}
+html.dark .truncation-banner{background:rgba(202,138,4,.12);border-color:rgba(202,138,4,.3);color:#fbbf24}
+.para{
+  display:flex;gap:10px;padding:7px 8px;border-radius:6px;
+  cursor:pointer;transition:background .1s;
+}
+.para:hover{background:var(--surface-2)}
+.para.active-para{background:var(--accent-dim)}
+.para-num{
+  min-width:28px;height:20px;flex-shrink:0;margin-top:3px;
+  background:var(--surface-2);border:1px solid var(--border);
+  border-radius:4px;font-size:11px;font-family:monospace;
+  display:flex;align-items:center;justify-content:center;color:var(--muted);
+}
+.para.active-para .para-num{background:var(--accent);border-color:var(--accent);color:#fff}
+.para-text{font-size:.88rem;line-height:1.65;color:var(--text)}
+
+/* ── Comments panel ─────────────────────────────────────────────────────────── */
+#comments-panel{
+  width:40%;display:flex;flex-direction:column;
+  background:var(--surface-2);overflow:hidden;
+}
+
+/* mode toggle */
+.panel-toolbar{
+  padding:12px 16px;border-bottom:1px solid var(--border);
+  background:var(--surface);display:flex;flex-direction:column;gap:10px;flex-shrink:0;
+}
+.mode-toggle{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--surface-2)}
+.mode-btn{
+  flex:1;padding:7px 0;border:none;background:transparent;
+  color:var(--muted);font-size:.8rem;font-weight:600;cursor:pointer;
+  transition:background .12s,color .12s;
+}
+.mode-btn.active{background:var(--accent);color:#fff}
+.review-row{display:flex;align-items:center;gap:8px}
+.review-row .btn{flex-shrink:0}
+#streaming-label{font-size:.78rem;color:var(--muted);display:none}
+#streaming-cursor{display:inline-block;width:2px;height:12px;background:var(--accent);
+                  margin-left:2px;vertical-align:middle;
+                  animation:blink .9s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* mode-change notice */
+#mode-change-notice{
+  font-size:.75rem;color:var(--muted);padding:6px 12px;
+  background:var(--surface-2);border-bottom:1px solid var(--border);
+  display:none;flex-shrink:0;
+}
+
+/* scrollable comments area */
+#comments-scroll{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+
+/* summary card */
+#summary-card{
+  border-radius:var(--r);border:1px solid var(--border);
+  background:var(--surface);padding:14px 16px;display:none;
+  box-shadow:var(--shadow);
+}
+.summary-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.grade-badge{
+  font-size:1.6rem;font-weight:800;color:var(--accent);
+  line-height:1;flex-shrink:0;
+}
+.summary-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.summary-text{font-size:.85rem;color:var(--text);line-height:1.6}
+
+/* filter pills row */
+#filter-row{
+  display:none;flex-wrap:wrap;gap:5px;padding:10px 14px 4px;flex-shrink:0;
+}
+.filter-pill{
+  font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  padding:3px 9px;border-radius:4px;border:1px solid;cursor:pointer;
+  transition:opacity .12s;
+}
+.filter-pill.off{opacity:.35}
+
+/* comment cards */
+.comment-card{
+  border-radius:var(--r);border:1px solid var(--border);
+  background:var(--surface);padding:12px 14px;
+  cursor:pointer;transition:box-shadow .12s,border-color .12s;
+  animation:fadeUp .2s ease both;
+}
+.comment-card:hover{box-shadow:var(--shadow-md)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.comment-card.card-active{box-shadow:var(--shadow-md)}
+.card-header{display:flex;align-items:center;gap:6px;margin-bottom:7px;flex-wrap:wrap}
+.type-badge{
+  font-size:.65rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 7px;border-radius:4px;border:1px solid;
+}
+.sev-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.sev-high{background:#dc2626}.sev-medium{background:#f59e0b}.sev-low{background:#9ca3af}
+.para-ref{font-size:.72rem;color:var(--muted);font-family:monospace;margin-left:auto}
+.card-quote{
+  font-size:.8rem;font-style:italic;color:var(--muted);
+  border-left:2px solid var(--border-2);padding-left:8px;margin-bottom:7px;
+  line-height:1.5;
+}
+.card-comment{font-size:.83rem;color:var(--text);line-height:1.55;margin-bottom:6px}
+.card-suggestion{
+  font-size:.8rem;color:var(--muted);line-height:1.5;
+  border-top:1px solid var(--border);padding-top:7px;margin-top:2px;
+}
+.card-suggestion::before{content:"→ ";color:var(--accent);font-weight:600}
+
+/* type colours on cards and filter pills */
+.t-grammar{color:var(--c-grammar);background:var(--c-grammar-bg);border-color:var(--c-grammar-bd)}
+.t-content{color:var(--c-content);background:var(--c-content-bg);border-color:var(--c-content-bd)}
+.t-structure{color:var(--c-structure);background:var(--c-structure-bg);border-color:var(--c-structure-bd)}
+.t-clarity{color:var(--c-clarity);background:var(--c-clarity-bg);border-color:var(--c-clarity-bd)}
+.t-evidence{color:var(--c-evidence);background:var(--c-evidence-bg);border-color:var(--c-evidence-bd)}
+.t-citations{color:var(--c-citations);background:var(--c-citations-bg);border-color:var(--c-citations-bd)}
+
+/* comment card border-left accent */
+.comment-card[data-type="grammar"]{border-left:3px solid var(--c-grammar)}
+.comment-card[data-type="content"]{border-left:3px solid var(--c-content)}
+.comment-card[data-type="structure"]{border-left:3px solid var(--c-structure)}
+.comment-card[data-type="clarity"]{border-left:3px solid var(--c-clarity)}
+.comment-card[data-type="evidence"]{border-left:3px solid var(--c-evidence)}
+.comment-card[data-type="citations"]{border-left:3px solid var(--c-citations)}
+
+/* hidden by filter */
+#comments-scroll.hide-grammar .comment-card[data-type="grammar"]{display:none}
+#comments-scroll.hide-content .comment-card[data-type="content"]{display:none}
+#comments-scroll.hide-structure .comment-card[data-type="structure"]{display:none}
+#comments-scroll.hide-clarity .comment-card[data-type="clarity"]{display:none}
+#comments-scroll.hide-evidence .comment-card[data-type="evidence"]{display:none}
+#comments-scroll.hide-citations .comment-card[data-type="citations"]{display:none}
+
+/* ── Chat panel (Supervisor only) ───────────────────────────────────────────── */
+#chat-panel{
+  border-top:1px solid var(--border);
+  display:flex;flex-direction:column;
+  background:var(--surface);flex-shrink:0;max-height:40%;
+}
+.chat-header{
+  padding:8px 14px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.chat-header-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+#clear-chat-btn{font-size:.72rem;color:var(--muted);background:none;border:none;cursor:pointer;padding:0}
+#clear-chat-btn:hover{color:var(--danger)}
+#chat-history{
+  flex:1;overflow-y:auto;padding:10px 14px;
+  display:flex;flex-direction:column;gap:8px;
+  min-height:60px;
+}
+.chat-bubble{max-width:90%;padding:8px 11px;border-radius:10px;font-size:.83rem;line-height:1.55;word-break:break-word}
+.bubble-user{
+  align-self:flex-end;background:var(--accent);color:#fff;
+  border-bottom-right-radius:3px;
+}
+.bubble-assistant{
+  align-self:flex-start;background:var(--surface-2);color:var(--text);
+  border:1px solid var(--border);border-bottom-left-radius:3px;
+}
+.chat-input-row{
+  display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--border);flex-shrink:0;
+}
+#chat-textarea{
+  flex:1;resize:none;border:1px solid var(--border);border-radius:6px;
+  padding:7px 10px;background:var(--surface-2);color:var(--text);font-size:.83rem;
+  line-height:1.45;min-height:36px;max-height:100px;overflow-y:auto;
+  transition:border-color .12s;outline:none;
+}
+#chat-textarea:focus{border-color:var(--accent)}
+#chat-send-btn{flex-shrink:0;align-self:flex-end}
+
+/* hide chat in grading mode */
+body.mode-grading #chat-panel{display:none}
+/* run button label swaps */
+body.mode-supervisor #run-btn::before{content:""}
+body.mode-grading #run-btn .run-label{content:""}
+
+/* review error */
+#review-error{
+  padding:8px 12px;border-radius:6px;background:#fef2f2;border:1px solid #fecaca;
+  color:#991b1b;font-size:.8rem;display:none;margin:0 14px;flex-shrink:0;
+}
+html.dark #review-error{background:rgba(220,38,38,.12);border-color:rgba(220,38,38,.3);color:#fca5a5}
+
+/* ── Mobile ─────────────────────────────────────────────────────────────────── */
+@media(max-width:767px){
+  #review-screen{flex-direction:column}
+  #doc-panel{width:100%;height:50vh;border-right:none;border-bottom:1px solid var(--border)}
+  #comments-panel{width:100%;flex:1}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ──────────────────────────────────────────────────────────────── -->
+<div id="top-bar">
+  <span class="logo">Study<span>Buddy</span></span>
+  <button class="btn" id="new-review-btn" style="display:none">New Review</button>
+  <button class="btn btn-ghost" id="theme-btn" title="Toggle theme">☀</button>
+</div>
+
+<!-- ── Upload screen ────────────────────────────────────────────────────────── -->
+<div id="upload-screen">
+  <h1 class="upload-heading">Upload your work</h1>
+  <p class="upload-sub">Get honest feedback from your supervisor or a formal grade — your choice.</p>
+  <div id="drop-zone">
+    <span class="dz-icon">📄</span>
+    <div class="dz-label">Drop your file here</div>
+    <div class="dz-sub">or click to browse</div>
+    <div class="dz-types">
+      <span class="type-pill">DOCX</span>
+      <span class="type-pill">PDF</span>
+      <span class="type-pill">PPTX</span>
+      <span class="type-pill">XLSX</span>
+    </div>
+  </div>
+  <div class="upload-error" id="upload-error"></div>
+  <input type="file" id="file-input" accept=".docx,.pdf,.pptx,.xlsx">
+</div>
+
+<!-- ── Review screen ─────────────────────────────────────────────────────────── -->
+<div id="review-screen">
+
+  <!-- Document panel -->
+  <div id="doc-panel">
+    <div id="doc-filename"></div>
+    <div class="truncation-banner" id="truncation-banner">
+      ⚠ Document truncated to the first ~15,000 tokens. Feedback covers the beginning of your document.
+    </div>
+    <div id="para-list"></div>
+  </div>
+
+  <!-- Comments panel -->
+  <div id="comments-panel">
+
+    <!-- toolbar -->
+    <div class="panel-toolbar">
+      <div class="mode-toggle">
+        <button class="mode-btn active" data-mode="supervisor" id="btn-supervisor">Supervisor</button>
+        <button class="mode-btn" data-mode="grading" id="btn-grading">Grading</button>
+      </div>
+      <div class="review-row">
+        <button class="btn btn-accent" id="run-btn">
+          <span class="run-label">Run Review</span>
+        </button>
+        <span id="streaming-label">Reading your document…<span id="streaming-cursor"></span></span>
+      </div>
+    </div>
+
+    <!-- mode-change notice -->
+    <div id="mode-change-notice">Mode changed — run a new review to see updated feedback.</div>
+
+    <!-- review error -->
+    <div id="review-error"></div>
+
+    <!-- filter pills -->
+    <div id="filter-row">
+      <span class="filter-pill t-grammar" data-type="grammar">Grammar</span>
+      <span class="filter-pill t-content" data-type="content">Content</span>
+      <span class="filter-pill t-structure" data-type="structure">Structure</span>
+      <span class="filter-pill t-clarity" data-type="clarity">Clarity</span>
+      <span class="filter-pill t-evidence" data-type="evidence">Evidence</span>
+      <span class="filter-pill t-citations" data-type="citations">Citations</span>
+    </div>
+
+    <!-- scrollable comments -->
+    <div id="comments-scroll">
+      <div id="summary-card"></div>
+      <div id="cards-list"></div>
+    </div>
+
+    <!-- chat panel -->
+    <div id="chat-panel">
+      <div class="chat-header">
+        <span class="chat-header-label">Chat with your supervisor</span>
+        <button id="clear-chat-btn">Clear chat</button>
+      </div>
+      <div id="chat-history"></div>
+      <div class="chat-input-row">
+        <textarea id="chat-textarea" placeholder="Ask a question about your work…" rows="1"></textarea>
+        <button class="btn btn-accent" id="chat-send-btn">Send</button>
+      </div>
+    </div>
+
+  </div><!-- /comments-panel -->
+</div><!-- /review-screen -->
+
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+//  State
+// ════════════════════════════════════════════════════════════════════════════
+const SK = 'sb_v1';
+function loadState(){try{return JSON.parse(localStorage.getItem(SK))||{};}catch{return {};}}
+function saveState(s){localStorage.setItem(SK, JSON.stringify(s));}
+
+let state = loadState();
+state.mode = state.mode || 'supervisor';
+state.theme = state.theme || null;
+
+let currentParagraphs = [];
+let chatHistory = [];      // [{role, content}, ...]
+let reviewHasRun = false;
+let chatStreaming = false;
+let reviewStreaming = false;
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Helpers
+// ════════════════════════════════════════════════════════════════════════════
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function $(sel,ctx=document){return ctx.querySelector(sel);}
+function $$(sel,ctx=document){return [...ctx.querySelectorAll(sel)];}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Theme
+// ════════════════════════════════════════════════════════════════════════════
+function applyTheme(){
+  const dark = document.documentElement.classList.contains('dark');
+  $('#theme-btn').textContent = dark ? '☀' : '🌙';
+}
+$('#theme-btn').addEventListener('click', ()=>{
+  const isDark = document.documentElement.classList.toggle('dark');
+  state.theme = isDark ? 'dark' : 'light';
+  localStorage.setItem('sb_theme', state.theme);
+  saveState(state);
+  applyTheme();
+});
+applyTheme();
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Screen helpers
+// ════════════════════════════════════════════════════════════════════════════
+function showUploadScreen(){
+  $('#upload-screen').style.display = '';
+  $('#review-screen').classList.remove('active');
+  $('#new-review-btn').style.display = 'none';
+}
+function showReviewScreen(){
+  $('#upload-screen').style.display = 'none';
+  $('#review-screen').classList.add('active');
+  $('#new-review-btn').style.display = '';
+}
+$('#new-review-btn').addEventListener('click', ()=>{
+  currentParagraphs = [];
+  chatHistory = [];
+  reviewHasRun = false;
+  clearComments();
+  clearChat();
+  showUploadScreen();
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Mode toggle
+// ════════════════════════════════════════════════════════════════════════════
+function applyMode(mode){
+  state.mode = mode;
+  saveState(state);
+  document.body.className = 'mode-' + mode;
+  $$('.mode-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+  $('#run-btn .run-label').textContent = mode === 'grading' ? 'Run Grading' : 'Run Review';
+  if(reviewHasRun){
+    $('#mode-change-notice').style.display = 'block';
+  }
+}
+$$('.mode-btn').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.mode)));
+applyMode(state.mode);
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Upload
+// ════════════════════════════════════════════════════════════════════════════
+const dropZone  = $('#drop-zone');
+const fileInput = $('#file-input');
+const uploadErr = $('#upload-error');
+
+dropZone.addEventListener('dragover',  e=>{ e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', ()=>dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e=>{
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if(f) handleUpload(f);
+});
+dropZone.addEventListener('click', ()=>fileInput.click());
+fileInput.addEventListener('change', e=>{ if(e.target.files[0]) handleUpload(e.target.files[0]); fileInput.value=''; });
+
+function showUploadError(msg){
+  uploadErr.textContent = msg;
+  uploadErr.style.display = 'block';
+}
+function clearUploadError(){ uploadErr.style.display = 'none'; }
+
+async function handleUpload(file){
+  clearUploadError();
+  dropZone.classList.add('drag-over');
+  const icon = dropZone.querySelector('.dz-icon');
+  const origIcon = icon.textContent;
+  icon.textContent = '⏳';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  try{
+    const res = await fetch('/api/upload', {method:'POST', body:fd});
+    const data = await res.json();
+    if(!res.ok){ showUploadError(data.error || 'Upload failed'); icon.textContent=origIcon; dropZone.classList.remove('drag-over'); return; }
+    currentParagraphs = data.paragraphs;
+    chatHistory = [];
+    reviewHasRun = false;
+    clearComments();
+    clearChat();
+    renderDocument(file.name, data.paragraphs, data.truncated);
+    $('#mode-change-notice').style.display = 'none';
+    showReviewScreen();
+  }catch(e){
+    showUploadError('Could not reach the server. Is app.py running?');
+  } finally {
+    icon.textContent = origIcon;
+    dropZone.classList.remove('drag-over');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Document rendering
+// ════════════════════════════════════════════════════════════════════════════
+function renderDocument(filename, paragraphs, truncated){
+  $('#doc-filename').textContent = filename;
+  const banner = $('#truncation-banner');
+  banner.style.display = truncated ? 'block' : 'none';
+  const list = $('#para-list');
+  list.innerHTML = '';
+  paragraphs.forEach((p, i)=>{
+    const div = document.createElement('div');
+    div.className = 'para';
+    div.dataset.idx = i;
+    div.id = 'para-' + i;
+    div.innerHTML = `<span class="para-num">${i}</span><span class="para-text">${esc(p)}</span>`;
+    div.addEventListener('click', ()=>scrollToComment(i));
+    list.appendChild(div);
+  });
+}
+function highlightPara(idx){
+  $$('.para.active-para').forEach(el=>el.classList.remove('active-para'));
+  const el = $('#para-' + idx);
+  if(el){ el.classList.add('active-para'); el.scrollIntoView({block:'nearest',behavior:'smooth'}); }
+}
+function scrollToComment(paraIdx){
+  const card = $(`#cards-list .comment-card[data-idx="${paraIdx}"]`);
+  if(card){ card.scrollIntoView({block:'nearest',behavior:'smooth'}); card.classList.add('card-active'); setTimeout(()=>card.classList.remove('card-active'),800); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Review
+// ════════════════════════════════════════════════════════════════════════════
+$('#run-btn').addEventListener('click', startReview);
+
+function clearComments(){
+  $('#cards-list').innerHTML = '';
+  const sc = $('#summary-card');
+  sc.innerHTML = '';
+  sc.style.display = 'none';
+  $('#filter-row').style.display = 'none';
+  $('#review-error').style.display = 'none';
+}
+
+async function startReview(){
+  if(reviewStreaming || !currentParagraphs.length) return;
+  reviewStreaming = true;
+  clearComments();
+  $('#mode-change-notice').style.display = 'none';
+  setStreamingUI(true);
+
+  try{
+    const res = await fetch('/api/review',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({paragraphs: currentParagraphs, mode: state.mode})
+    });
+    if(!res.ok){
+      const d = await res.json();
+      showReviewError(d.error || 'Review failed');
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while(true){
+      const {done, value} = await reader.read();
+      if(done) break;
+      buf += dec.decode(value, {stream:true});
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for(const line of lines){
+        const t = line.trim();
+        if(!t) continue;
+        try{
+          const obj = JSON.parse(t);
+          if(obj.type === 'summary') renderSummary(obj);
+          else renderComment(obj);
+        }catch{}
+      }
+    }
+    // flush
+    if(buf.trim()){ try{ const obj=JSON.parse(buf.trim()); if(obj.type==='summary') renderSummary(obj); else renderComment(obj); }catch{} }
+    reviewHasRun = true;
+    $('#filter-row').style.display = 'flex';
+  }catch(e){
+    showReviewError('Could not reach the server.');
+  } finally {
+    reviewStreaming = false;
+    setStreamingUI(false);
+  }
+}
+
+function setStreamingUI(on){
+  $('#run-btn').disabled = on;
+  const lbl = $('#streaming-label');
+  lbl.style.display = on ? 'inline' : 'none';
+  if(on){
+    lbl.childNodes[0].textContent = state.mode === 'grading' ? 'Marking your submission…' : 'Reading your document…';
+  }
+}
+
+function showReviewError(msg){
+  const el = $('#review-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function renderSummary(obj){
+  const sc = $('#summary-card');
+  const hasGrade = obj.overall_grade && obj.overall_grade !== 'null';
+  sc.innerHTML = `
+    <div class="summary-header">
+      ${hasGrade ? `<div class="grade-badge">${esc(obj.overall_grade)}</div>` : ''}
+      <div><div class="summary-label">${hasGrade ? 'Overall Grade' : 'Supervisor Summary'}</div></div>
+    </div>
+    <div class="summary-text">${esc(obj.summary_text || '')}</div>
+  `;
+  sc.style.display = 'block';
+}
+
+function renderComment(obj){
+  if(!obj.paragraph_index && obj.paragraph_index !== 0) return;
+  const type = obj.type || 'content';
+  const sev  = obj.severity || 'medium';
+  const card = document.createElement('div');
+  card.className = 'comment-card';
+  card.dataset.type = type;
+  card.dataset.idx  = obj.paragraph_index;
+  card.innerHTML = `
+    <div class="card-header">
+      <span class="type-badge t-${esc(type)}">${esc(type)}</span>
+      <span class="sev-dot sev-${esc(sev)}"></span>
+      <span class="para-ref">¶${obj.paragraph_index}</span>
+    </div>
+    ${obj.quote ? `<div class="card-quote">${esc(obj.quote)}</div>` : ''}
+    <div class="card-comment">${esc(obj.comment || '')}</div>
+    ${obj.suggestion ? `<div class="card-suggestion">${esc(obj.suggestion)}</div>` : ''}
+  `;
+  card.addEventListener('mouseenter', ()=>highlightPara(obj.paragraph_index));
+  card.addEventListener('mouseleave', ()=>{ $$('.para.active-para').forEach(el=>el.classList.remove('active-para')); });
+  $('#cards-list').appendChild(card);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Filter pills
+// ════════════════════════════════════════════════════════════════════════════
+$$('.filter-pill').forEach(pill=>{
+  pill.addEventListener('click', ()=>{
+    const type = pill.dataset.type;
+    pill.classList.toggle('off');
+    $('#comments-scroll').classList.toggle('hide-'+type, pill.classList.contains('off'));
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Chat
+// ════════════════════════════════════════════════════════════════════════════
+$('#chat-send-btn').addEventListener('click', submitChat);
+$('#chat-textarea').addEventListener('keydown', e=>{
+  if(e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); submitChat(); }
+});
+$('#clear-chat-btn').addEventListener('click', ()=>{ chatHistory=[]; clearChat(); });
+
+function clearChat(){
+  $('#chat-history').innerHTML = '';
+}
+
+function appendBubble(role, text){
+  const div = document.createElement('div');
+  div.className = 'chat-bubble bubble-' + role;
+  div.textContent = text;
+  $('#chat-history').appendChild(div);
+  div.scrollIntoView({block:'nearest',behavior:'smooth'});
+  return div;
+}
+
+async function submitChat(){
+  if(chatStreaming) return;
+  const ta = $('#chat-textarea');
+  const msg = ta.value.trim();
+  if(!msg || !currentParagraphs.length) return;
+  ta.value = '';
+  ta.style.height = 'auto';
+
+  chatStreaming = true;
+  $('#chat-send-btn').disabled = true;
+
+  appendBubble('user', msg);
+  const assistantBubble = appendBubble('assistant', '');
+
+  // Build messages array
+  let messages;
+  if(chatHistory.length === 0){
+    messages = [{
+      role: 'user',
+      content: [
+        {type:'text', text: 'Here is the document we\'ll be discussing:\n\n' +
+          currentParagraphs.map((p,i)=>`[${i}] ${p}`).join('\n\n'),
+         cache_control: {type:'ephemeral'}},
+        {type:'text', text: msg}
+      ]
+    }];
+  } else {
+    messages = chatHistory.concat([{role:'user', content: msg}]);
+  }
+
+  let fullResponse = '';
+  try{
+    const res = await fetch('/api/chat',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        paragraphs: chatHistory.length === 0 ? currentParagraphs : [],
+        history: chatHistory,
+        message: msg
+      })
+    });
+    if(!res.ok){
+      const d = await res.json();
+      assistantBubble.textContent = 'Error: ' + (d.error||'Something went wrong');
+      return;
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    while(true){
+      const {done, value} = await reader.read();
+      if(done) break;
+      fullResponse += dec.decode(value, {stream:true});
+      assistantBubble.textContent = fullResponse;
+      assistantBubble.scrollIntoView({block:'nearest',behavior:'smooth'});
+    }
+
+    // persist conversation — document embedded in first message
+    if(chatHistory.length === 0){
+      chatHistory.push({role:'user', content: messages[0].content});
+    } else {
+      chatHistory.push({role:'user', content: msg});
+    }
+    chatHistory.push({role:'assistant', content: fullResponse});
+
+  }catch(e){
+    assistantBubble.textContent = 'Could not reach the server.';
+  } finally {
+    chatStreaming = false;
+    $('#chat-send-btn').disabled = false;
+  }
+}
+
+// auto-resize chat textarea
+$('#chat-textarea').addEventListener('input', function(){
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+});
+</script>
+</body>
+</html>

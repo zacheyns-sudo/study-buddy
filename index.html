@@ -25,6 +25,7 @@ button,textarea,input{font:inherit}
   --c-clarity:#ca8a04;   --c-clarity-bg:#fefce8;   --c-clarity-bd:#fde68a;
   --c-evidence:#7c3aed;  --c-evidence-bg:#f5f3ff;  --c-evidence-bd:#ddd6fe;
   --c-citations:#0891b2; --c-citations-bg:#ecfeff; --c-citations-bd:#a5f3fc;
+  --c-strength:#16a34a;  --c-strength-bg:#f0fdf4;  --c-strength-bd:#bbf7d0;
 
   --r:8px;
   --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
@@ -44,6 +45,7 @@ html.dark{
   --c-clarity-bg:rgba(202,138,4,.12);   --c-clarity-bd:rgba(202,138,4,.25);
   --c-evidence-bg:rgba(124,58,237,.12); --c-evidence-bd:rgba(124,58,237,.25);
   --c-citations-bg:rgba(8,145,178,.12); --c-citations-bd:rgba(8,145,178,.25);
+  --c-strength-bg:rgba(22,163,74,.12);  --c-strength-bd:rgba(22,163,74,.25);
 }
 
 /* ── Base ───────────────────────────────────────────────────────────────────── */
@@ -237,6 +239,7 @@ html.dark .truncation-banner{background:rgba(202,138,4,.12);border-color:rgba(20
 .t-clarity{color:var(--c-clarity);background:var(--c-clarity-bg);border-color:var(--c-clarity-bd)}
 .t-evidence{color:var(--c-evidence);background:var(--c-evidence-bg);border-color:var(--c-evidence-bd)}
 .t-citations{color:var(--c-citations);background:var(--c-citations-bg);border-color:var(--c-citations-bd)}
+.t-strength{color:var(--c-strength);background:var(--c-strength-bg);border-color:var(--c-strength-bd)}
 
 /* comment card border-left accent */
 .comment-card[data-type="grammar"]{border-left:3px solid var(--c-grammar)}
@@ -245,6 +248,7 @@ html.dark .truncation-banner{background:rgba(202,138,4,.12);border-color:rgba(20
 .comment-card[data-type="clarity"]{border-left:3px solid var(--c-clarity)}
 .comment-card[data-type="evidence"]{border-left:3px solid var(--c-evidence)}
 .comment-card[data-type="citations"]{border-left:3px solid var(--c-citations)}
+.comment-card[data-type="strength"]{border-left:3px solid var(--c-strength)}
 
 /* hidden by filter */
 #comments-scroll.hide-grammar .comment-card[data-type="grammar"]{display:none}
@@ -253,6 +257,7 @@ html.dark .truncation-banner{background:rgba(202,138,4,.12);border-color:rgba(20
 #comments-scroll.hide-clarity .comment-card[data-type="clarity"]{display:none}
 #comments-scroll.hide-evidence .comment-card[data-type="evidence"]{display:none}
 #comments-scroll.hide-citations .comment-card[data-type="citations"]{display:none}
+#comments-scroll.hide-strength .comment-card[data-type="strength"]{display:none}
 
 /* ── Chat panel (Supervisor only) ───────────────────────────────────────────── */
 #chat-panel{
@@ -292,6 +297,28 @@ html.dark .truncation-banner{background:rgba(202,138,4,.12);border-color:rgba(20
 }
 #chat-textarea:focus{border-color:var(--accent)}
 #chat-send-btn{flex-shrink:0;align-self:flex-end}
+
+/* ── Rubric section (Grading mode only) ─────────────────────────────────────── */
+#rubric-section{display:none;flex-shrink:0;border-bottom:1px solid var(--border)}
+body.mode-grading #rubric-section{display:block}
+.rubric-toggle{
+  width:100%;display:flex;align-items:center;justify-content:space-between;
+  padding:8px 16px;background:none;border:none;cursor:pointer;
+  font-size:.78rem;font-weight:600;color:var(--muted);text-align:left;
+}
+.rubric-toggle:hover{color:var(--text)}
+.rubric-toggle .rubric-caret{transition:transform .15s;font-size:.65rem}
+#rubric-section.open .rubric-caret{transform:rotate(90deg)}
+#rubric-body{display:none;padding:0 12px 10px}
+#rubric-section.open #rubric-body{display:block}
+#rubric-textarea{
+  width:100%;resize:vertical;min-height:80px;max-height:200px;
+  border:1px solid var(--border);border-radius:6px;
+  padding:8px 10px;background:var(--surface-2);color:var(--text);
+  font-size:.8rem;line-height:1.5;outline:none;transition:border-color .12s;
+}
+#rubric-textarea:focus{border-color:var(--accent)}
+.rubric-hint{font-size:.72rem;color:var(--muted);margin-top:5px}
 
 /* hide chat in grading mode */
 body.mode-grading #chat-panel{display:none}
@@ -374,11 +401,24 @@ html.dark #review-error{background:rgba(220,38,38,.12);border-color:rgba(220,38,
     <!-- mode-change notice -->
     <div id="mode-change-notice">Mode changed — run a new review to see updated feedback.</div>
 
+    <!-- rubric (grading mode only) -->
+    <div id="rubric-section">
+      <button class="rubric-toggle" id="rubric-toggle">
+        <span>📋 Attach rubric <span style="font-weight:400;color:var(--muted-2)">(optional)</span></span>
+        <span class="rubric-caret">▶</span>
+      </button>
+      <div id="rubric-body">
+        <textarea id="rubric-textarea" placeholder="Paste your rubric or marking criteria here…"></textarea>
+        <div class="rubric-hint">The professor will grade against these criteria.</div>
+      </div>
+    </div>
+
     <!-- review error -->
     <div id="review-error"></div>
 
     <!-- filter pills -->
     <div id="filter-row">
+      <span class="filter-pill t-strength" data-type="strength">Strengths</span>
       <span class="filter-pill t-grammar" data-type="grammar">Grammar</span>
       <span class="filter-pill t-content" data-type="content">Content</span>
       <span class="filter-pill t-structure" data-type="structure">Structure</span>
@@ -591,10 +631,11 @@ async function startReview(){
   setStreamingUI(true);
 
   try{
+    const rubric = ($('#rubric-textarea').value || '').trim();
     const res = await fetch('/api/review',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({paragraphs: currentParagraphs, mode: state.mode})
+      body: JSON.stringify({paragraphs: currentParagraphs, mode: state.mode, rubric})
     });
     if(!res.ok){
       const d = await res.json();
@@ -683,6 +724,13 @@ function renderComment(obj){
   card.addEventListener('mouseleave', ()=>{ $$('.para.active-para').forEach(el=>el.classList.remove('active-para')); });
   $('#cards-list').appendChild(card);
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Rubric toggle
+// ════════════════════════════════════════════════════════════════════════════
+$('#rubric-toggle').addEventListener('click', ()=>{
+  $('#rubric-section').classList.toggle('open');
+});
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Filter pills

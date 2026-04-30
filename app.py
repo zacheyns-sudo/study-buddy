@@ -3,12 +3,19 @@ import io
 from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory
 from flask_cors import CORS
 import anthropic
+import docx as docx_lib
+import pdfplumber
+from pptx import Presentation
+import openpyxl
 
 app = Flask(__name__)
-CORS(app)
+_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "http://localhost:5557,http://localhost:3000").split(",")]
+CORS(app, origins=_origins)
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB
 
 _key = os.environ.get("ANTHROPIC_API_KEY", "")
+if not _key:
+    raise RuntimeError("ANTHROPIC_API_KEY environment variable is not set")
 client = anthropic.Anthropic(api_key=_key)
 
 MAX_CHARS = 120_000
@@ -123,8 +130,7 @@ def _merge_pdf_lines(lines):
 
 
 def parse_docx(file_bytes):
-    import docx
-    doc = docx.Document(io.BytesIO(file_bytes))
+    doc = docx_lib.Document(io.BytesIO(file_bytes))
     paragraphs = []
     for para in doc.paragraphs:
         t = para.text.strip()
@@ -139,7 +145,6 @@ def parse_docx(file_bytes):
 
 
 def parse_pdf(file_bytes):
-    import pdfplumber
     lines = []
     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
         for page in pdf.pages:
@@ -151,7 +156,6 @@ def parse_pdf(file_bytes):
 
 
 def parse_pptx(file_bytes):
-    from pptx import Presentation
     prs = Presentation(io.BytesIO(file_bytes))
     paragraphs = []
     for slide_num, slide in enumerate(prs.slides, 1):
@@ -168,17 +172,18 @@ def parse_pptx(file_bytes):
 
 
 def parse_xlsx(file_bytes):
-    import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
-    paragraphs = []
-    for sheet in wb.worksheets:
-        paragraphs.append(f"[Sheet: {sheet.title}]")
-        for row in sheet.iter_rows(values_only=True):
-            cells = [str(c) for c in row if c is not None and str(c).strip()]
-            if cells:
-                paragraphs.append(" | ".join(cells))
-    wb.close()
-    return paragraphs
+    try:
+        paragraphs = []
+        for sheet in wb.worksheets:
+            paragraphs.append(f"[Sheet: {sheet.title}]")
+            for row in sheet.iter_rows(values_only=True):
+                cells = [str(c) for c in row if c is not None and str(c).strip()]
+                if cells:
+                    paragraphs.append(" | ".join(cells))
+        return paragraphs
+    finally:
+        wb.close()
 
 
 def extract_text(filename, file_bytes):
@@ -316,6 +321,7 @@ def chat():
     paragraphs = data.get("paragraphs", [])
     history    = data.get("history", [])
     user_msg   = (data.get("message") or "").strip()
+    context    = data.get("context") or {}
 
     if not user_msg:
         return jsonify({"error": "No message provided"}), 400
@@ -326,11 +332,12 @@ def chat():
         if not paragraphs:
             return jsonify({"error": "No document loaded"}), 400
         doc = numbered_doc(paragraphs)
+        ctx_block = _build_context_block(context)
+        intro = f"Here is the document we'll be discussing.{ctx_block}\n\n{doc}"
         messages = [{
             "role": "user",
             "content": [
-                {"type": "text", "text": f"Here is the document we'll be discussing:\n\n{doc}",
-                 "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": intro, "cache_control": {"type": "ephemeral"}},
                 {"type": "text", "text": user_msg}
             ]
         }]

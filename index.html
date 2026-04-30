@@ -725,6 +725,7 @@ function highlightPara(idx){
   if(el){ el.classList.add('active-para'); el.scrollIntoView({block:'nearest',behavior:'smooth'}); }
 }
 function scrollToComment(paraIdx){
+  if(!Number.isInteger(paraIdx)) return;
   const card = $(`#cards-list .comment-card[data-idx="${paraIdx}"]`);
   if(card){ card.scrollIntoView({block:'nearest',behavior:'smooth'}); card.classList.add('card-active'); setTimeout(()=>card.classList.remove('card-active'),800); }
 }
@@ -740,7 +741,9 @@ function clearComments(){
   sc.innerHTML = '';
   sc.style.display = 'none';
   $('#filter-row').style.display = 'none';
-  $('#review-error').style.display = 'none';
+  const err = $('#review-error');
+  err.style.display = 'none';
+  err.textContent = '';
 }
 
 async function startReview(){
@@ -779,7 +782,7 @@ async function startReview(){
           const obj = JSON.parse(t);
           if(obj.type === 'summary') renderSummary(obj);
           else renderComment(obj);
-        }catch{}
+        }catch(e){ console.warn('NDJSON parse error', e); }
       }
     }
     // flush
@@ -822,10 +825,13 @@ function renderSummary(obj){
   sc.style.display = 'block';
 }
 
+const VALID_TYPES = new Set(['strength','grammar','content','structure','clarity','evidence','citations']);
+const VALID_SEVS  = new Set(['low','medium','high']);
+
 function renderComment(obj){
   if(!obj.paragraph_index && obj.paragraph_index !== 0) return;
-  const type = obj.type || 'content';
-  const sev  = obj.severity || 'medium';
+  const type = VALID_TYPES.has(obj.type) ? obj.type : 'content';
+  const sev  = VALID_SEVS.has(obj.severity) ? obj.severity : 'medium';
   const card = document.createElement('div');
   card.className = 'comment-card';
   card.dataset.type = type;
@@ -899,28 +905,7 @@ async function submitChat(){
   appendBubble('user', msg);
   const assistantBubble = appendBubble('assistant', '');
 
-  // Build messages array
-  let messages;
-  if(chatHistory.length === 0){
-    const ctxLines = [];
-    const c = state.context;
-    if(c.subject) ctxLines.push(`Subject/Course: ${c.subject}`);
-    if(c.type)    ctxLines.push(`Submission type: ${c.type}`);
-    if(c.topic)   ctxLines.push(`Topic/Title: ${c.topic}`);
-    if(c.notes)   ctxLines.push(`Additional context: ${c.notes}`);
-    const ctxBlock = ctxLines.length ? '\n\n[SUBMISSION CONTEXT]\n' + ctxLines.join('\n') + '\n[/SUBMISSION CONTEXT]' : '';
-    messages = [{
-      role: 'user',
-      content: [
-        {type:'text', text: 'Here is the document we\'ll be discussing:' + ctxBlock + '\n\n' +
-          currentParagraphs.map((p,i)=>`[${i}] ${p}`).join('\n\n'),
-         cache_control: {type:'ephemeral'}},
-        {type:'text', text: msg}
-      ]
-    }];
-  } else {
-    messages = chatHistory.concat([{role:'user', content: msg}]);
-  }
+  const isFirstMsg = chatHistory.length === 0;
 
   let fullResponse = '';
   try{
@@ -928,9 +913,10 @@ async function submitChat(){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        paragraphs: chatHistory.length === 0 ? currentParagraphs : [],
+        paragraphs: isFirstMsg ? currentParagraphs : [],
         history: chatHistory,
-        message: msg
+        message: msg,
+        context: isFirstMsg ? (state.context || {}) : {}
       })
     });
     if(!res.ok){
@@ -948,13 +934,9 @@ async function submitChat(){
       assistantBubble.scrollIntoView({block:'nearest',behavior:'smooth'});
     }
 
-    // persist conversation — document embedded in first message
-    if(chatHistory.length === 0){
-      chatHistory.push({role:'user', content: messages[0].content});
-    } else {
-      chatHistory.push({role:'user', content: msg});
-    }
+    chatHistory.push({role:'user', content: msg});
     chatHistory.push({role:'assistant', content: fullResponse});
+    if(chatHistory.length > 20) chatHistory.splice(0, 2);
 
   }catch(e){
     assistantBubble.textContent = 'Could not reach the server.';

@@ -208,6 +208,20 @@ def chunk_paragraphs(paragraphs, max_chars=MAX_CHARS):
 def numbered_doc(paragraphs):
     return "\n\n".join(f"[{i}] {p}" for i, p in enumerate(paragraphs) if p.strip())
 
+
+import re as _re
+_REF_HEADING = _re.compile(
+    r'^(references|bibliography|works cited|reference list|sources cited|literature cited)[\s.:]*$',
+    _re.IGNORECASE
+)
+
+def _find_reference_start(paragraphs):
+    """Return the index of the first reference-list heading, or len(paragraphs) if absent."""
+    for i, p in enumerate(paragraphs):
+        if _REF_HEADING.match(p.strip()):
+            return i
+    return len(paragraphs)
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  STREAMING GENERATORS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -228,16 +242,28 @@ def _build_context_block(context):
 def _review_stream(paragraphs, mode, rubric="", context=None):
     prompt = GRADING_PROMPT if mode == "grading" else SUPERVISOR_PROMPT
     doc = numbered_doc(paragraphs)
-    n   = len(paragraphs)
-    q1, q2, q3 = max(1, n // 4), max(1, n // 2), max(1, 3 * n // 4)
+    n        = len(paragraphs)
+    ref_idx  = _find_reference_start(paragraphs)   # first ref-list paragraph, or n
+    content_n = ref_idx                             # number of substantive paragraphs
+    q1 = max(1, content_n // 4)
+    q2 = max(1, content_n // 2)
+    q3 = max(1, 3 * content_n // 4)
     ctx_block    = _build_context_block(context)
     rubric_block = f"\n\n[RUBRIC]\n{rubric.strip()}\n[/RUBRIC]" if rubric and rubric.strip() else ""
+    ref_note = (
+        f"  Reference list begins at [{ref_idx}] — check those paragraphs for APA 7 formatting only, "
+        f"do not treat them as substantive content."
+        if ref_idx < n else ""
+    )
     distribution = (
         f"\n\n[DOCUMENT STATS]\n"
-        f"Total paragraphs: {n}  (indices [0] through [{n - 1}])\n"
-        f"Q1 [0]–[{q1 - 1}]  |  Q2 [{q1}]–[{q2 - 1}]  |  Q3 [{q2}]–[{q3 - 1}]  |  Q4 [{q3}]–[{n - 1}]\n"
-        f"REQUIREMENT: emit at least 3 comments whose paragraph_index falls in Q3 and at least 3 in Q4. "
-        f"Your last comment before the summary MUST reference a paragraph in Q4 (index ≥ {q3}).\n"
+        f"Total paragraphs: {n}  (indices [0]–[{n - 1}])\n"
+        f"Substantive content: [0]–[{content_n - 1}]{ref_note}\n"
+        f"Content quarters — "
+        f"Q1 [0]–[{q1 - 1}]  |  Q2 [{q1}]–[{q2 - 1}]  |  Q3 [{q2}]–[{q3 - 1}]  |  Q4 [{q3}]–[{content_n - 1}]\n"
+        f"REQUIREMENT: read and comment on the ENTIRE substantive content [0]–[{content_n - 1}]. "
+        f"Emit at least 3 comments from Q3 and at least 3 from Q4. "
+        f"Your final content comment MUST reference a paragraph with index ≥ {q3}.\n"
         f"[/DOCUMENT STATS]"
     )
     user_content = f"Please review the following document.{ctx_block}{rubric_block}{distribution}\n\n{doc}"

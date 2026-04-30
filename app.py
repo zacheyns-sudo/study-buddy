@@ -226,7 +226,7 @@ def _review_stream(paragraphs, mode, rubric="", context=None):
     user_content = f"Please review the following document.{ctx_block}{rubric_block}\n\n{doc}"
     with client.messages.stream(
         model="claude-sonnet-4-6",
-        max_tokens=4096,
+        max_tokens=8192,
         system=[{"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user_content}],
     ) as stream:

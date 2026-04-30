@@ -205,11 +205,25 @@ def numbered_doc(paragraphs):
 #  STREAMING GENERATORS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _review_stream(paragraphs, mode, rubric=""):
+def _build_context_block(context):
+    if not context:
+        return ""
+    lines = []
+    if context.get("subject"): lines.append(f"Subject/Course: {context['subject']}")
+    if context.get("type"):    lines.append(f"Submission type: {context['type']}")
+    if context.get("topic"):   lines.append(f"Topic/Title: {context['topic']}")
+    if context.get("notes"):   lines.append(f"Additional context: {context['notes']}")
+    if not lines:
+        return ""
+    return "\n\n[SUBMISSION CONTEXT]\n" + "\n".join(lines) + "\n[/SUBMISSION CONTEXT]"
+
+
+def _review_stream(paragraphs, mode, rubric="", context=None):
     prompt = GRADING_PROMPT if mode == "grading" else SUPERVISOR_PROMPT
     doc = numbered_doc(paragraphs)
+    ctx_block    = _build_context_block(context)
     rubric_block = f"\n\n[RUBRIC]\n{rubric.strip()}\n[/RUBRIC]" if rubric and rubric.strip() else ""
-    user_content = f"Please review the following document.{rubric_block}\n\n{doc}"
+    user_content = f"Please review the following document.{ctx_block}{rubric_block}\n\n{doc}"
     with client.messages.stream(
         model="claude-sonnet-4-6",
         max_tokens=4096,
@@ -276,8 +290,9 @@ def upload():
 def review():
     data = request.get_json(silent=True) or {}
     paragraphs = data.get("paragraphs", [])
-    mode = data.get("mode", "supervisor")
-    rubric = data.get("rubric", "")
+    mode    = data.get("mode", "supervisor")
+    rubric  = data.get("rubric", "")
+    context = data.get("context") or {}
 
     if not paragraphs:
         return jsonify({"error": "No paragraphs provided"}), 400
@@ -286,7 +301,7 @@ def review():
 
     try:
         return Response(
-            stream_with_context(_review_stream(paragraphs, mode, rubric)),
+            stream_with_context(_review_stream(paragraphs, mode, rubric, context)),
             content_type="text/plain;charset=utf-8"
         )
     except Exception as e:

@@ -11,7 +11,7 @@ app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB
 _key = os.environ.get("ANTHROPIC_API_KEY", "")
 client = anthropic.Anthropic(api_key=_key)
 
-MAX_CHARS = 60_000
+MAX_CHARS = 120_000
 ALLOWED_EXT = {".docx", ".pdf", ".pptx", ".xlsx"}
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -49,7 +49,8 @@ Rules:
 - include at least 3–5 strength comments across the document, spread naturally throughout
 - severity for strength comments is always "low" (it is not a problem scale, just required for schema consistency)
 - severity for issue comments: low = minor polish, medium = noticeably weakens the work, high = fundamental problem
-- emit 8–35 comments depending on document length; aim for roughly 25–35% strength, 65–75% issues
+- emit 15–50 comments depending on document length; aim for roughly 25–35% strength, 65–75% issues
+- CRITICAL: distribute comments across the ENTIRE document — your paragraph_index values must span from the opening paragraphs to the final paragraphs; do not cluster in the first half
 - overall_grade is always null in supervisor mode
 - never write a generic comment — name the specific thing and explain why it matters"""
 
@@ -86,7 +87,8 @@ Rules:
 - include at least 2–4 strength comments spread across the document
 - severity for strength comments is always "low"
 - severity for issue comments: low = minor, medium = weakens the grade, high = submission-level failure
-- emit 8–40 comments; do not skip minor issues in grading mode
+- emit 15–55 comments; do not skip minor issues in grading mode
+- CRITICAL: distribute comments across the ENTIRE document — your paragraph_index values must span from the opening paragraphs to the final paragraphs; do not cluster in the first half
 - overall_grade uses A+, A, A-, B+, B, B-, C+, C, C-, D, F
 - never write a generic comment"""
 

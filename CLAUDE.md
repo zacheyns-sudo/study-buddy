@@ -41,7 +41,7 @@ This is a two-file app:
 
 **Document numbering**: `numbered_doc()` wraps every paragraph as `[0] text`, `[1] text`, etc. The AI is instructed to reference these indices in `paragraph_index`. The frontend uses these indices to cross-link comment cards to paragraphs.
 
-**Paragraph truncation**: `chunk_paragraphs()` hard-stops at 60,000 chars. If truncated, the frontend shows a banner. The truncation is applied at upload time — the trimmed list is what gets stored in the JS `currentParagraphs` variable and sent to all subsequent API calls.
+**Paragraph truncation**: `chunk_paragraphs()` hard-stops at 120,000 chars (~30,000 tokens, well within the 200k context window). If truncated, the frontend shows a banner. The truncation is applied at upload time — the trimmed list is what gets stored in the JS `currentParagraphs` variable and sent to all subsequent API calls.
 
 ## Model
 

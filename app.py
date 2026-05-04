@@ -1,5 +1,6 @@
 import os
 import io
+import json
 from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory
 from flask_cors import CORS
 import anthropic
@@ -217,7 +218,10 @@ _REF_HEADING = _re.compile(
 
 def _find_reference_start(paragraphs):
     """Return the index of the first reference-list heading, or len(paragraphs) if absent."""
+    threshold = int(len(paragraphs) * 0.6)  # only scan the last 40%
     for i, p in enumerate(paragraphs):
+        if i < threshold:
+            continue
         if _REF_HEADING.match(p.strip()):
             return i
     return len(paragraphs)
@@ -267,6 +271,10 @@ def _review_stream(paragraphs, mode, rubric="", context=None):
         f"[/DOCUMENT STATS]"
     )
     user_content = f"Please review the following document.{ctx_block}{rubric_block}{distribution}\n\n{doc}"
+    buf = ''
+    count = 0
+    decoder = json.JSONDecoder()
+
     with client.messages.stream(
         model="claude-sonnet-4-6",
         max_tokens=16000,
@@ -274,7 +282,40 @@ def _review_stream(paragraphs, mode, rubric="", context=None):
         messages=[{"role": "user", "content": user_content}],
     ) as stream:
         for text in stream.text_stream:
-            yield text
+            buf += text
+            while True:
+                start = buf.find('{')
+                if start == -1:
+                    buf = ''
+                    break
+                try:
+                    obj, end = decoder.raw_decode(buf, start)
+                    buf = buf[end:]
+                    if obj.get('type') == 'summary':
+                        yield json.dumps(obj) + '\n'
+                        count += 1
+                    elif isinstance(obj.get('paragraph_index'), int):
+                        yield json.dumps(obj) + '\n'
+                        count += 1
+                except json.JSONDecodeError:
+                    buf = buf[start:]
+                    break
+
+    # drain any remaining complete objects after stream ends
+    while True:
+        start = buf.find('{')
+        if start == -1:
+            break
+        try:
+            obj, end = decoder.raw_decode(buf, start)
+            buf = buf[end:]
+            if obj.get('type') == 'summary' or isinstance(obj.get('paragraph_index'), int):
+                yield json.dumps(obj) + '\n'
+                count += 1
+        except json.JSONDecodeError:
+            break
+
+    yield json.dumps({'type': 'done', 'count': count}) + '\n'
 
 
 def _chat_stream(messages):

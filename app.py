@@ -275,31 +275,34 @@ def _review_stream(paragraphs, mode, rubric="", context=None):
     count = 0
     decoder = json.JSONDecoder()
 
-    with client.messages.stream(
-        model="claude-sonnet-4-6",
-        max_tokens=16000,
-        system=[{"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": user_content}],
-    ) as stream:
-        for text in stream.text_stream:
-            buf += text
-            while True:
-                start = buf.find('{')
-                if start == -1:
-                    buf = ''
-                    break
-                try:
-                    obj, end = decoder.raw_decode(buf, start)
-                    buf = buf[end:]
-                    if obj.get('type') == 'summary':
-                        yield json.dumps(obj) + '\n'
-                        count += 1
-                    elif isinstance(obj.get('paragraph_index'), int):
-                        yield json.dumps(obj) + '\n'
-                        count += 1
-                except json.JSONDecodeError:
-                    buf = buf[start:]
-                    break
+    try:
+        with client.messages.stream(
+            model="claude-sonnet-4-6",
+            max_tokens=16000,
+            system=[{"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user_content}],
+        ) as stream:
+            for text in stream.text_stream:
+                buf += text
+                while True:
+                    start = buf.find('{')
+                    if start == -1:
+                        buf = ''
+                        break
+                    try:
+                        obj, end = decoder.raw_decode(buf, start)
+                        buf = buf[end:]
+                        if obj.get('type') == 'summary':
+                            yield json.dumps(obj) + '\n'
+                            count += 1
+                        elif isinstance(obj.get('paragraph_index'), int):
+                            yield json.dumps(obj) + '\n'
+                            count += 1
+                    except json.JSONDecodeError:
+                        buf = buf[start:]
+                        break
+    except Exception:
+        pass
 
     # drain any remaining complete objects after stream ends
     while True:

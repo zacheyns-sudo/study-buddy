@@ -188,6 +188,7 @@ html.dark .truncation-banner{background:rgba(234,179,8,.12);border-color:rgba(23
 .review-row{display:flex;align-items:center;gap:10px}
 .review-row .btn{flex-shrink:0}
 #streaming-label{font-size:.78rem;color:var(--muted);display:none}
+#review-progress{font-size:.78rem;color:var(--muted)}
 #streaming-cursor{display:inline-block;width:2px;height:12px;background:var(--accent);margin-left:2px;vertical-align:middle;animation:blink .9s step-end infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 
@@ -457,6 +458,7 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
           <span class="run-label">Run Review</span>
         </button>
         <span id="streaming-label">Reading your document…<span id="streaming-cursor"></span></span>
+        <span id="review-progress"></span>
       </div>
     </div>
 
@@ -529,6 +531,9 @@ let chatHistory = [];      // [{role, content}, ...]
 let reviewHasRun = false;
 let chatStreaming = false;
 let reviewStreaming = false;
+let reviewCursor = 0;
+const REVIEW_CHUNK_SIZE = 10;
+let fullReviewComplete = false;
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Helpers
@@ -570,7 +575,7 @@ $('#new-review-btn').addEventListener('click', ()=>{
   currentParagraphs = [];
   chatHistory = [];
   reviewHasRun = false;
-  clearComments();
+  resetReviewProgress();
   clearChat();
   showUploadScreen();
 });
@@ -583,10 +588,13 @@ function applyMode(mode){
   saveState(state);
   document.body.className = 'mode-' + mode;
   $$('.mode-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
-  $('#run-btn .run-label').textContent = mode === 'grading' ? 'Run Grading' : 'Run Review';
   if(reviewHasRun){
+    reviewCursor = 0;
+    fullReviewComplete = false;
+    updateProgressLabel();
     $('#mode-change-notice').style.display = 'block';
   }
+  updateReviewButton();
 }
 $$('.mode-btn').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.mode)));
 applyMode(state.mode);
@@ -640,7 +648,7 @@ async function handleUpload(file){
     console.log(`[StudyBuddy] Upload complete — ${data.paragraphs.length} paragraphs, truncated=${data.truncated}, chars=${data.char_count}`);
     chatHistory = [];
     reviewHasRun = false;
-    clearComments();
+    resetReviewProgress();
     clearChat();
     renderDocument(file.name, data.paragraphs, data.truncated);
     renderContextBar();
@@ -747,19 +755,71 @@ function clearComments(){
   err.textContent = '';
 }
 
-async function startReview(){
-  if(reviewStreaming || !currentParagraphs.length) return;
-  reviewStreaming = true;
+function resetReviewProgress(){
+  reviewCursor = 0;
+  fullReviewComplete = false;
   clearComments();
+  updateReviewButton();
+  updateProgressLabel();
+}
+
+function updateReviewButton(){
+  const btn = $('#run-btn');
+  const label = btn.querySelector('.run-label');
+  if(fullReviewComplete){
+    label.textContent = 'Review complete';
+    btn.disabled = true;
+  } else if(reviewCursor === 0){
+    label.textContent = state.mode === 'grading' ? 'Run Grading' : 'Run Review';
+    btn.disabled = false;
+  } else {
+    label.textContent = 'Review next section';
+    btn.disabled = false;
+  }
+}
+
+function updateProgressLabel(){
+  const el = $('#review-progress');
+  const total = currentParagraphs.length;
+  if(!total || reviewCursor === 0){
+    el.textContent = '';
+  } else if(fullReviewComplete){
+    el.textContent = `Reviewed all ${total} paragraphs`;
+  } else {
+    el.textContent = `Reviewed ${reviewCursor} of ${total} paragraphs`;
+  }
+}
+
+async function startReview(){
+  if(reviewStreaming || !currentParagraphs.length || fullReviewComplete) return;
+
+  const chunk = currentParagraphs.slice(reviewCursor, reviewCursor + REVIEW_CHUNK_SIZE);
+  if(!chunk.length) return;
+
+  const isFinalChunk = (reviewCursor + REVIEW_CHUNK_SIZE) >= currentParagraphs.length;
+  const chunkDisplayFrom = reviewCursor + 1;
+  const chunkDisplayTo   = reviewCursor + chunk.length;
+
+  if(reviewCursor === 0) clearComments();
+
+  reviewStreaming = true;
   $('#mode-change-notice').style.display = 'none';
-  setStreamingUI(true);
+  setStreamingUI(true, chunkDisplayFrom, chunkDisplayTo);
 
   try{
     const rubric = ($('#rubric-textarea').value || '').trim();
     const res = await fetch('/api/review',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({paragraphs: currentParagraphs, mode: state.mode, rubric, context: state.context})
+      body: JSON.stringify({
+        paragraphs: chunk,
+        paragraph_offset: reviewCursor,
+        total_paragraphs: currentParagraphs.length,
+        mode: state.mode,
+        rubric,
+        context: state.context,
+        is_final_chunk: isFinalChunk,
+      })
     });
     if(!res.ok){
       const d = await res.json();
@@ -772,7 +832,8 @@ async function startReview(){
     let buf = '';
     let parseErrors = 0;
     let streamDone = false;
-    console.log(`[StudyBuddy] Starting review — ${currentParagraphs.length} paragraphs, mode=${state.mode}`);
+    console.log(`[StudyBuddy] Reviewing paragraphs ${reviewCursor}–${reviewCursor + chunk.length - 1} of ${currentParagraphs.length}, mode=${state.mode}, final=${isFinalChunk}`);
+
     while(true){
       const {done, value} = await reader.read();
       if(done) break;
@@ -786,7 +847,7 @@ async function startReview(){
           const obj = JSON.parse(t);
           if(obj.type === 'done'){
             streamDone = true;
-            console.log(`[StudyBuddy] Stream complete — server count=${obj.count}`);
+            console.log(`[StudyBuddy] Chunk complete — server count=${obj.count}`);
           } else if(obj.type === 'summary'){
             renderSummary(obj);
           } else {
@@ -812,32 +873,40 @@ async function startReview(){
       }catch(e){
         parseErrors++;
         console.warn(`[StudyBuddy] NDJSON flush error — leftover:`, JSON.stringify(buf.trim()), e);
-        showReviewError(`Review stream ended with unparsed content. Some feedback may be missing (${parseErrors} parse error${parseErrors!==1?'s':''}).`);
       }
     }
-    if(!streamDone){
-      console.warn('[StudyBuddy] Stream ended without a done event — stream may have been cut short');
-      showReviewError('Review may be incomplete — the stream ended before the server finished. Some feedback could be missing.');
-    }
     if(parseErrors > 0){
-      console.warn(`[StudyBuddy] ${parseErrors} NDJSON parse error(s) during stream`);
+      console.warn(`[StudyBuddy] ${parseErrors} NDJSON parse error(s) during chunk`);
     }
+    if(!streamDone){
+      console.warn('[StudyBuddy] Chunk stream ended without done event');
+      showReviewError('This section did not finish — try reviewing this section again.');
+      return;  // do not advance the cursor
+    }
+
+    // chunk completed successfully — advance cursor
+    reviewCursor += chunk.length;
     reviewHasRun = true;
     $('#filter-row').style.display = 'flex';
+    if(reviewCursor >= currentParagraphs.length) fullReviewComplete = true;
+    updateProgressLabel();
+
   }catch(e){
     showReviewError('Could not reach the server.');
   } finally {
     reviewStreaming = false;
     setStreamingUI(false);
+    updateReviewButton();
   }
 }
 
-function setStreamingUI(on){
+function setStreamingUI(on, from, to){
   $('#run-btn').disabled = on;
   const lbl = $('#streaming-label');
   lbl.style.display = on ? 'inline' : 'none';
   if(on){
-    lbl.childNodes[0].textContent = state.mode === 'grading' ? 'Marking your submission…' : 'Reading your document…';
+    const range = (from !== undefined) ? ` paragraphs ${from}–${to}` : '';
+    lbl.childNodes[0].textContent = (state.mode === 'grading' ? 'Marking' : 'Reviewing') + range + '…';
   }
 }
 

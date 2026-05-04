@@ -206,8 +206,8 @@ def chunk_paragraphs(paragraphs, max_chars=MAX_CHARS):
     return result, len(result) < len(paragraphs)
 
 
-def numbered_doc(paragraphs):
-    return "\n\n".join(f"[{i}] {p}" for i, p in enumerate(paragraphs) if p.strip())
+def numbered_doc(paragraphs, offset=0):
+    return "\n\n".join(f"[{i + offset}] {p}" for i, p in enumerate(paragraphs) if p.strip())
 
 
 import re as _re
@@ -243,34 +243,65 @@ def _build_context_block(context):
     return "\n\n[SUBMISSION CONTEXT]\n" + "\n".join(lines) + "\n[/SUBMISSION CONTEXT]"
 
 
-def _review_stream(paragraphs, mode, rubric="", context=None):
+def _review_stream(paragraphs, mode, rubric="", context=None,
+                   paragraph_offset=0, total_paragraphs=None, is_final_chunk=True):
     prompt = GRADING_PROMPT if mode == "grading" else SUPERVISOR_PROMPT
-    doc = numbered_doc(paragraphs)
-    n        = len(paragraphs)
-    ref_idx  = _find_reference_start(paragraphs)   # first ref-list paragraph, or n
-    content_n = ref_idx                             # number of substantive paragraphs
-    q1 = max(1, content_n // 4)
-    q2 = max(1, content_n // 2)
-    q3 = max(1, 3 * content_n // 4)
+
+    if total_paragraphs is None:
+        total_paragraphs = len(paragraphs)
+
+    is_full_doc = (paragraph_offset == 0 and is_final_chunk)
+    chunk_start = paragraph_offset
+    chunk_end   = paragraph_offset + len(paragraphs) - 1
+
+    doc          = numbered_doc(paragraphs, offset=paragraph_offset)
     ctx_block    = _build_context_block(context)
     rubric_block = f"\n\n[RUBRIC]\n{rubric.strip()}\n[/RUBRIC]" if rubric and rubric.strip() else ""
-    ref_note = (
-        f"  Reference list begins at [{ref_idx}] — check those paragraphs for APA 7 formatting only, "
-        f"do not treat them as substantive content."
-        if ref_idx < n else ""
-    )
-    distribution = (
-        f"\n\n[DOCUMENT STATS]\n"
-        f"Total paragraphs: {n}  (indices [0]–[{n - 1}])\n"
-        f"Substantive content: [0]–[{content_n - 1}]{ref_note}\n"
-        f"Content quarters — "
-        f"Q1 [0]–[{q1 - 1}]  |  Q2 [{q1}]–[{q2 - 1}]  |  Q3 [{q2}]–[{q3 - 1}]  |  Q4 [{q3}]–[{content_n - 1}]\n"
-        f"REQUIREMENT: read and comment on the ENTIRE substantive content [0]–[{content_n - 1}]. "
-        f"Emit at least 3 comments from Q3 and at least 3 from Q4. "
-        f"Your final content comment MUST reference a paragraph with index ≥ {q3}.\n"
-        f"[/DOCUMENT STATS]"
-    )
-    user_content = f"Please review the following document.{ctx_block}{rubric_block}{distribution}\n\n{doc}"
+
+    if is_full_doc:
+        n         = len(paragraphs)
+        ref_idx   = _find_reference_start(paragraphs)
+        content_n = ref_idx
+        q1 = max(1, content_n // 4)
+        q2 = max(1, content_n // 2)
+        q3 = max(1, 3 * content_n // 4)
+        ref_note = (
+            f"  Reference list begins at [{ref_idx}] — check those paragraphs for APA 7 formatting only, "
+            f"do not treat them as substantive content."
+            if ref_idx < n else ""
+        )
+        extra = (
+            f"\n\n[DOCUMENT STATS]\n"
+            f"Total paragraphs: {n}  (indices [0]–[{n - 1}])\n"
+            f"Substantive content: [0]–[{content_n - 1}]{ref_note}\n"
+            f"Content quarters — "
+            f"Q1 [0]–[{q1 - 1}]  |  Q2 [{q1}]–[{q2 - 1}]  |  Q3 [{q2}]–[{q3 - 1}]  |  Q4 [{q3}]–[{content_n - 1}]\n"
+            f"REQUIREMENT: read and comment on the ENTIRE substantive content [0]–[{content_n - 1}]. "
+            f"Emit at least 3 comments from Q3 and at least 3 from Q4. "
+            f"Your final content comment MUST reference a paragraph with index ≥ {q3}.\n"
+            f"[/DOCUMENT STATS]"
+        )
+        max_tok = 16000
+    else:
+        summary_rule = (
+            "After your comments, output the final whole-document summary line."
+            if is_final_chunk else
+            "Output ONLY comment objects — do NOT output a summary line."
+        )
+        extra = (
+            f"\n\n[SECTION REVIEW]\n"
+            f"You are reviewing a section of a larger document "
+            f"({total_paragraphs} paragraphs total, indices [0]–[{total_paragraphs - 1}]).\n"
+            f"Review ONLY the paragraphs shown below: [{chunk_start}]–[{chunk_end}].\n"
+            f"Emit up to 2 comments per paragraph (maximum {len(paragraphs) * 2} total for this section). "
+            f"Focus on the most impactful issues.\n"
+            f"All paragraph_index values MUST be integers in the range {chunk_start}–{chunk_end}.\n"
+            f"{summary_rule}\n"
+            f"[/SECTION REVIEW]"
+        )
+        max_tok = 8000
+
+    user_content = f"Please review the following.{ctx_block}{rubric_block}{extra}\n\n{doc}"
     buf = ''
     count = 0
     decoder = json.JSONDecoder()
@@ -278,7 +309,7 @@ def _review_stream(paragraphs, mode, rubric="", context=None):
     try:
         with client.messages.stream(
             model="claude-sonnet-4-6",
-            max_tokens=16000,
+            max_tokens=max_tok,
             system=[{"type": "text", "text": prompt, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": user_content}],
         ) as stream:
@@ -376,10 +407,13 @@ def upload():
 @app.route("/api/review", methods=["POST"])
 def review():
     data = request.get_json(silent=True) or {}
-    paragraphs = data.get("paragraphs", [])
-    mode    = data.get("mode", "supervisor")
-    rubric  = data.get("rubric", "")
-    context = data.get("context") or {}
+    paragraphs       = data.get("paragraphs", [])
+    mode             = data.get("mode", "supervisor")
+    rubric           = data.get("rubric", "")
+    context          = data.get("context") or {}
+    paragraph_offset = int(data.get("paragraph_offset", 0))
+    total_paragraphs = int(data.get("total_paragraphs") or len(paragraphs))
+    is_final_chunk   = bool(data.get("is_final_chunk", True))
 
     if not paragraphs:
         return jsonify({"error": "No paragraphs provided"}), 400
@@ -388,7 +422,12 @@ def review():
 
     try:
         return Response(
-            stream_with_context(_review_stream(paragraphs, mode, rubric, context)),
+            stream_with_context(_review_stream(
+                paragraphs, mode, rubric, context,
+                paragraph_offset=paragraph_offset,
+                total_paragraphs=total_paragraphs,
+                is_final_chunk=is_final_chunk,
+            )),
             content_type="text/plain;charset=utf-8"
         )
     except Exception as e:

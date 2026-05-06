@@ -532,7 +532,7 @@ let reviewHasRun = false;
 let chatStreaming = false;
 let reviewStreaming = false;
 let reviewCursor = 0;
-const REVIEW_CHUNK_SIZE = 10;
+const REVIEW_CHUNK_SIZE = 5;
 let fullReviewComplete = false;
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -773,7 +773,7 @@ function updateReviewButton(){
     label.textContent = state.mode === 'grading' ? 'Run Grading' : 'Run Review';
     btn.disabled = false;
   } else {
-    label.textContent = 'Review next section';
+    label.textContent = state.mode === 'grading' ? 'Grade further' : 'Review further';
     btn.disabled = false;
   }
 }
@@ -832,7 +832,21 @@ async function startReview(){
     let buf = '';
     let parseErrors = 0;
     let streamDone = false;
+    let streamError = '';
     console.log(`[StudyBuddy] Reviewing paragraphs ${reviewCursor}–${reviewCursor + chunk.length - 1} of ${currentParagraphs.length}, mode=${state.mode}, final=${isFinalChunk}`);
+
+    function handleReviewEvent(obj){
+      if(obj.type === 'error'){
+        streamError = obj.error || 'This section did not finish.';
+      } else if(obj.type === 'done'){
+        streamDone = true;
+        console.log(`[StudyBuddy] Chunk complete — server count=${obj.count}`);
+      } else if(obj.type === 'summary'){
+        renderSummary(obj);
+      } else {
+        renderComment(obj);
+      }
+    }
 
     while(true){
       const {done, value} = await reader.read();
@@ -845,31 +859,19 @@ async function startReview(){
         if(!t) continue;
         try{
           const obj = JSON.parse(t);
-          if(obj.type === 'done'){
-            streamDone = true;
-            console.log(`[StudyBuddy] Chunk complete — server count=${obj.count}`);
-          } else if(obj.type === 'summary'){
-            renderSummary(obj);
-          } else {
-            renderComment(obj);
-          }
+          handleReviewEvent(obj);
         }catch(e){
           parseErrors++;
           console.warn(`[StudyBuddy] NDJSON parse error #${parseErrors} — raw:`, JSON.stringify(t), e);
         }
       }
     }
+    buf += dec.decode();
     // flush any remaining buffer
     if(buf.trim()){
       try{
         const obj = JSON.parse(buf.trim());
-        if(obj.type === 'done'){
-          streamDone = true;
-        } else if(obj.type === 'summary'){
-          renderSummary(obj);
-        } else {
-          renderComment(obj);
-        }
+        handleReviewEvent(obj);
       }catch(e){
         parseErrors++;
         console.warn(`[StudyBuddy] NDJSON flush error — leftover:`, JSON.stringify(buf.trim()), e);
@@ -880,7 +882,7 @@ async function startReview(){
     }
     if(!streamDone){
       console.warn('[StudyBuddy] Chunk stream ended without done event');
-      showReviewError('This section did not finish — try reviewing this section again.');
+      showReviewError(streamError || 'The review connection closed before this section finished. Try this section again; it will resume from the same place.');
       return;  // do not advance the cursor
     }
 

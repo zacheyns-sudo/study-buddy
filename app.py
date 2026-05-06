@@ -253,6 +253,7 @@ def _review_stream(paragraphs, mode, rubric="", context=None,
     is_full_doc = (paragraph_offset == 0 and is_final_chunk)
     chunk_start = paragraph_offset
     chunk_end   = paragraph_offset + len(paragraphs) - 1
+    target_comments = max(4, min(12, len(paragraphs) * 2))
 
     doc          = numbered_doc(paragraphs, offset=paragraph_offset)
     ctx_block    = _build_context_block(context)
@@ -293,18 +294,19 @@ def _review_stream(paragraphs, mode, rubric="", context=None,
             f"You are reviewing a section of a larger document "
             f"({total_paragraphs} paragraphs total, indices [0]–[{total_paragraphs - 1}]).\n"
             f"Review ONLY the paragraphs shown below: [{chunk_start}]–[{chunk_end}].\n"
-            f"Emit up to 2 comments per paragraph (maximum {len(paragraphs) * 2} total for this section). "
-            f"Focus on the most impactful issues.\n"
+            f"Emit {target_comments} comments at most for this section. "
+            f"Focus on the most impactful issues and genuine strengths; do not try to comment on every paragraph.\n"
             f"All paragraph_index values MUST be integers in the range {chunk_start}–{chunk_end}.\n"
             f"{summary_rule}\n"
             f"[/SECTION REVIEW]"
         )
-        max_tok = 8000
+        max_tok = 12000
 
     user_content = f"Please review the following.{ctx_block}{rubric_block}{extra}\n\n{doc}"
     buf = ''
     count = 0
     decoder = json.JSONDecoder()
+    stop_reason = None
 
     try:
         with client.messages.stream(
@@ -332,8 +334,14 @@ def _review_stream(paragraphs, mode, rubric="", context=None,
                     except json.JSONDecodeError:
                         buf = buf[start:]
                         break
-    except Exception:
-        pass
+            final_message = stream.get_final_message()
+            stop_reason = getattr(final_message, "stop_reason", None)
+    except Exception as e:
+        yield json.dumps({
+            'type': 'error',
+            'error': f'Review stream interrupted: {str(e)}'
+        }) + '\n'
+        return
 
     # drain any remaining complete objects after stream ends
     while True:
@@ -348,6 +356,13 @@ def _review_stream(paragraphs, mode, rubric="", context=None,
                 count += 1
         except json.JSONDecodeError:
             break
+
+    if stop_reason == "max_tokens":
+        yield json.dumps({
+            'type': 'error',
+            'error': 'Review stream stopped before the model finished. Try this section again.'
+        }) + '\n'
+        return
 
     yield json.dumps({'type': 'done', 'count': count}) + '\n'
 

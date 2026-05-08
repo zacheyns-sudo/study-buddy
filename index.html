@@ -140,6 +140,24 @@ html.dark .upload-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
 .planner-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .planner-file-name{font-size:.75rem;color:var(--muted)}
 .planner-error{display:none;padding:9px 12px;border-radius:9px;background:#fff1f2;border:1px solid #fecdd3;color:#991b1b;font-size:.8rem}
+.saved-outlines{
+  display:none;flex-direction:column;gap:8px;border-top:1.5px solid var(--border);
+  padding-top:12px;margin-top:2px;
+}
+.saved-outlines.visible{display:flex}
+.saved-outlines-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.saved-outlines-title{font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.saved-outlines-list{display:flex;flex-direction:column;gap:7px}
+.saved-outline-item{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:var(--surface-2);border:1.5px solid var(--border);border-radius:10px;
+  padding:9px 10px;
+}
+.saved-outline-main{min-width:0}
+.saved-outline-title{font-size:.86rem;font-weight:750;color:var(--text);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.saved-outline-meta{font-size:.72rem;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.saved-outline-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.btn-small{padding:5px 10px;font-size:.75rem}
 
 /* ── Planner screen ── */
 #planner-screen{display:none;padding-top:var(--top-h);height:100vh;overflow:hidden}
@@ -503,6 +521,13 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
         </div>
         <div class="planner-error" id="planner-error"></div>
         <button class="btn btn-accent" id="planner-generate-btn" type="button">Generate outline</button>
+        <div class="saved-outlines" id="saved-outlines">
+          <div class="saved-outlines-head">
+            <span class="saved-outlines-title">Saved outlines</span>
+            <span class="planner-copy-note" id="saved-outlines-count"></span>
+          </div>
+          <div class="saved-outlines-list" id="saved-outlines-list"></div>
+        </div>
       </div>
 
     </div>
@@ -519,6 +544,7 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
     <div class="planner-page-actions">
       <span class="planner-copy-note" id="planner-copy-note"></span>
       <button class="btn" id="planner-edit-btn" type="button">Edit brief</button>
+      <button class="btn" id="planner-save-btn" type="button">Save outline</button>
       <button class="btn" id="planner-copy-btn" type="button">Copy outline</button>
     </div>
   </div>
@@ -666,12 +692,14 @@ state.theme   = state.theme   || null;
 state.context = state.context || {subject:'', type:'', topic:'', notes:''};
 state.startTab = state.startTab || 'review';
 state.planner = state.planner || {assignment:'', subject:'', type:'', topic:'', notes:'', targetWordCount:'', outline:''};
+state.savedOutlines = Array.isArray(state.savedOutlines) ? state.savedOutlines : [];
 
 let currentParagraphs = [];
 let chatHistory = [];      // [{role, content}, ...]
 let reviewComments = [];
 let plannerStreaming = false;
 let plannerOutline = state.planner.outline || '';
+let activeOutlineId = state.planner.activeOutlineId || null;
 let reviewHasRun = false;
 let chatStreaming = false;
 let reviewStreaming = false;
@@ -733,6 +761,21 @@ function plannerContextFromFields(){
   };
 }
 
+function plannerTitleFromFields(){
+  const topic = $('#planner-topic').value.trim();
+  if(topic) return topic;
+  const assignment = $('#planner-assignment').value.trim().replace(/\s+/g, ' ');
+  return assignment ? assignment.slice(0, 70) : 'Untitled outline';
+}
+
+function plannerMetaFromOutline(item){
+  const bits = [];
+  if(item.subject) bits.push(item.subject);
+  if(item.type) bits.push(item.type);
+  if(item.targetWordCount) bits.push(item.targetWordCount + ' words');
+  return bits.join(' · ');
+}
+
 function savePlannerState(){
   state.planner = {
     assignment: $('#planner-assignment').value,
@@ -742,6 +785,7 @@ function savePlannerState(){
     notes: $('#planner-notes').value.trim(),
     targetWordCount: $('#planner-word-count').value.trim(),
     outline: plannerOutline,
+    activeOutlineId,
   };
   saveState(state);
 }
@@ -755,13 +799,88 @@ function loadPlannerState(){
   $('#planner-notes').value = p.notes || '';
   $('#planner-word-count').value = p.targetWordCount || '';
   plannerOutline = p.outline || '';
+  activeOutlineId = p.activeOutlineId || null;
   renderPlannerOutput();
+  renderSavedOutlines();
 }
 
 function renderPlannerOutput(){
   $('#planner-output').innerHTML = renderPlannerMarkdown(plannerOutline);
   const topic = $('#planner-topic').value.trim();
   $('#planner-screen-title').textContent = topic ? topic + ' outline' : 'Generated outline';
+  $('#planner-save-btn').disabled = !plannerOutline || plannerStreaming;
+}
+
+function renderSavedOutlines(){
+  const wrap = $('#saved-outlines');
+  const list = $('#saved-outlines-list');
+  const outlines = state.savedOutlines || [];
+  wrap.classList.toggle('visible', outlines.length > 0);
+  $('#saved-outlines-count').textContent = outlines.length ? outlines.length + ' kept' : '';
+  list.innerHTML = outlines.map(item=>`
+    <div class="saved-outline-item" data-outline-id="${esc(item.id)}">
+      <div class="saved-outline-main">
+        <div class="saved-outline-title">${esc(item.title || 'Untitled outline')}</div>
+        <div class="saved-outline-meta">${esc(plannerMetaFromOutline(item) || 'Saved outline')}</div>
+      </div>
+      <div class="saved-outline-actions">
+        <button class="btn btn-small" type="button" data-open-outline="${esc(item.id)}">Open</button>
+        <button class="btn btn-small btn-ghost" type="button" data-delete-outline="${esc(item.id)}">Remove</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function currentOutlineSnapshot(){
+  return {
+    id: activeOutlineId || 'outline-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+    title: plannerTitleFromFields(),
+    assignment: $('#planner-assignment').value,
+    subject: $('#planner-subject').value.trim(),
+    type: $('#planner-type').value,
+    topic: $('#planner-topic').value.trim(),
+    notes: $('#planner-notes').value.trim(),
+    targetWordCount: $('#planner-word-count').value.trim(),
+    outline: plannerOutline,
+    savedAt: new Date().toISOString(),
+  };
+}
+
+function saveCurrentOutline(){
+  if(!plannerOutline) return;
+  const item = currentOutlineSnapshot();
+  const existing = state.savedOutlines.findIndex(o=>o.id === item.id);
+  if(existing >= 0) state.savedOutlines[existing] = item;
+  else state.savedOutlines.unshift(item);
+  activeOutlineId = item.id;
+  $('#planner-copy-note').textContent = 'Saved in app.';
+  savePlannerState();
+  renderSavedOutlines();
+  renderPlannerOutput();
+}
+
+function openSavedOutline(id){
+  const item = (state.savedOutlines || []).find(o=>o.id === id);
+  if(!item) return;
+  $('#planner-assignment').value = item.assignment || '';
+  $('#planner-subject').value = item.subject || '';
+  $('#planner-type').value = item.type || '';
+  $('#planner-topic').value = item.topic || '';
+  $('#planner-notes').value = item.notes || '';
+  $('#planner-word-count').value = item.targetWordCount || '';
+  plannerOutline = item.outline || '';
+  activeOutlineId = item.id;
+  savePlannerState();
+  renderPlannerOutput();
+  showPlannerScreen();
+}
+
+function deleteSavedOutline(id){
+  state.savedOutlines = (state.savedOutlines || []).filter(o=>o.id !== id);
+  if(activeOutlineId === id) activeOutlineId = null;
+  savePlannerState();
+  renderSavedOutlines();
+  renderPlannerOutput();
 }
 
 function renderPlannerMarkdown(markdown){
@@ -903,6 +1022,7 @@ async function generateOutline(){
   clearPlannerError();
   plannerStreaming = true;
   plannerOutline = '';
+  activeOutlineId = null;
   renderPlannerOutput();
   showPlannerScreen();
   $('#planner-generate-btn').disabled = true;
@@ -937,6 +1057,7 @@ async function generateOutline(){
     }
     plannerOutline += dec.decode();
     renderPlannerOutput();
+    saveCurrentOutline();
     savePlannerState();
   }catch(e){
     showPlannerError('Could not reach the server. Is app.py running?');
@@ -961,8 +1082,14 @@ async function copyPlannerOutline(){
 
 $$('.start-tab').forEach(btn=>btn.addEventListener('click', ()=>applyStartTab(btn.dataset.startTab)));
 ['planner-assignment','planner-subject','planner-type','planner-topic','planner-notes','planner-word-count'].forEach(id=>{
-  $('#' + id).addEventListener('input', savePlannerState);
-  $('#' + id).addEventListener('change', savePlannerState);
+  $('#' + id).addEventListener('input', ()=>{
+    savePlannerState();
+    renderPlannerOutput();
+  });
+  $('#' + id).addEventListener('change', ()=>{
+    savePlannerState();
+    renderPlannerOutput();
+  });
 });
 $('#planner-file-btn').addEventListener('click', ()=>$('#planner-file-input').click());
 $('#planner-file-input').addEventListener('change', e=>{
@@ -971,9 +1098,16 @@ $('#planner-file-input').addEventListener('change', e=>{
 });
 $('#planner-generate-btn').addEventListener('click', generateOutline);
 $('#planner-copy-btn').addEventListener('click', copyPlannerOutline);
+$('#planner-save-btn').addEventListener('click', saveCurrentOutline);
 $('#planner-edit-btn').addEventListener('click', ()=>{
   applyStartTab('plan');
   showUploadScreen();
+});
+$('#saved-outlines-list').addEventListener('click', e=>{
+  const openBtn = e.target.closest('[data-open-outline]');
+  const deleteBtn = e.target.closest('[data-delete-outline]');
+  if(openBtn) openSavedOutline(openBtn.dataset.openOutline);
+  if(deleteBtn) deleteSavedOutline(deleteBtn.dataset.deleteOutline);
 });
 loadPlannerState();
 applyStartTab(state.startTab);

@@ -106,6 +106,32 @@ You do NOT write prose for the student. If they ask you to rewrite a sentence or
 
 Respond in plain conversational prose — no bullet lists unless the student asks for one, no NDJSON, no markdown headers. Keep responses focused and useful, not lengthy."""
 
+PLANNER_PROMPT = """You are a senior academic supervisor helping a student plan an assignment before they write it. Create a practical paragraph-level essay outline from the assignment brief and context.
+
+Your role is to guide structure and thinking, not write the essay. Do NOT draft full essay prose, body paragraphs, or polished sentences for the student. Keep the output as an outline they can use to plan their own work.
+
+Output in concise Markdown with these sections:
+# Assignment Plan
+## Interpreted task
+Identify the assignment type, key requirements, likely assessment priorities, and any constraints.
+
+## Working thesis
+Suggest a possible central argument or thesis direction, framed as something the student should refine.
+
+## Recommended structure
+Give intro, body sections, and conclusion with rough word allocation if a target word count is provided.
+
+## Paragraph plan
+Create a paragraph-by-paragraph plan. For each paragraph, include its purpose, what evidence or sources are needed, and how it moves the argument forward.
+
+## Evidence to gather
+Name the kinds of sources, data, concepts, or examples the student should look for.
+
+## Pitfalls to avoid
+List common mistakes that would weaken this assignment.
+
+Be specific to the provided assignment brief. If information is missing, make reasonable assumptions and name them briefly."""
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  FILE PARSING
 # ══════════════════════════════════════════════════════════════════════════════
@@ -377,6 +403,26 @@ def _chat_stream(messages):
         for text in stream.text_stream:
             yield text
 
+
+def _plan_stream(assignment, context=None, target_word_count=""):
+    ctx_block = _build_context_block(context)
+    word_block = (
+        f"\n\n[TARGET WORD COUNT]\n{target_word_count.strip()}\n[/TARGET WORD COUNT]"
+        if target_word_count and target_word_count.strip() else ""
+    )
+    user_content = (
+        "Create a paragraph-level essay outline for this assignment."
+        f"{ctx_block}{word_block}\n\n[ASSIGNMENT BRIEF]\n{assignment.strip()}\n[/ASSIGNMENT BRIEF]"
+    )
+    with client.messages.stream(
+        model="claude-sonnet-4-6",
+        max_tokens=4096,
+        system=[{"type": "text", "text": PLANNER_PROMPT, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": user_content}],
+    ) as stream:
+        for text in stream.text_stream:
+            yield text
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  ROUTES
 # ══════════════════════════════════════════════════════════════════════════════
@@ -479,6 +525,29 @@ def chat():
     try:
         return Response(
             stream_with_context(_chat_stream(messages)),
+            content_type="text/plain;charset=utf-8"
+        )
+    except Exception as e:
+        return jsonify({"error": f"AI service error: {str(e)}"}), 502
+
+
+@app.route("/api/plan", methods=["POST"])
+def plan_assignment():
+    data = request.get_json(silent=True) or {}
+    assignment = (data.get("assignment") or "").strip()
+    context = data.get("context") or {}
+    target_word_count = str(data.get("target_word_count") or "").strip()
+
+    if not assignment:
+        return jsonify({"error": "No assignment text provided"}), 400
+
+    try:
+        return Response(
+            stream_with_context(_plan_stream(
+                assignment,
+                context=context,
+                target_word_count=target_word_count,
+            )),
             content_type="text/plain;charset=utf-8"
         )
     except Exception as e:

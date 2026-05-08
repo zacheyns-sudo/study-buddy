@@ -21,6 +21,17 @@ class ReviewClientBehaviorTest(unittest.TestCase):
         self.assertIn("function highlightCommentTarget(obj, type)", self.html)
         self.assertIn('class="comment-target', self.html)
 
+    def test_planner_start_tab_and_streaming_hooks_exist(self):
+        self.assertIn('data-start-tab="plan"', self.html)
+        self.assertIn('id="planner-assignment"', self.html)
+        self.assertIn("async function generateOutline()", self.html)
+        self.assertIn("fetch('/api/plan'", self.html)
+
+    def test_planner_upload_and_copy_hooks_exist(self):
+        self.assertIn('id="planner-file-input"', self.html)
+        self.assertIn("handlePlannerUpload", self.html)
+        self.assertIn("copyPlannerOutline", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()

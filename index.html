@@ -83,8 +83,9 @@ html.dark #top-bar{background:rgba(23,21,42,.9)}
 /* ── Upload screen ── */
 #upload-screen{
   min-height:calc(100vh - var(--top-h));padding-top:var(--top-h);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
   gap:20px;padding:calc(var(--top-h) + 48px) 24px 48px;
+  overflow-y:auto;
 }
 .upload-heading{
   font-size:1.75rem;font-weight:800;text-align:center;letter-spacing:-.03em;
@@ -92,6 +93,11 @@ html.dark #top-bar{background:rgba(23,21,42,.9)}
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
 }
 .upload-sub{color:var(--muted);text-align:center;max-width:420px;font-size:.95rem;line-height:1.65}
+.start-tabs{display:flex;gap:6px;background:var(--surface-2);border:1.5px solid var(--border);border-radius:12px;padding:4px;width:100%;max-width:480px}
+.start-tab{flex:1;border:none;border-radius:8px;padding:9px 12px;background:transparent;color:var(--muted);font-size:.82rem;font-weight:800;cursor:pointer;transition:all .15s}
+.start-tab.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.start-panel{display:none;width:100%;max-width:760px}
+.start-panel.active{display:flex;flex-direction:column;align-items:center;gap:16px}
 #drop-zone{
   width:100%;max-width:480px;border:2px dashed var(--border-2);border-radius:20px;
   background:var(--surface);padding:52px 32px;text-align:center;cursor:pointer;transition:all .2s;
@@ -124,6 +130,25 @@ html.dark .upload-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
 .ctx-input:focus,.ctx-select:focus,.ctx-notes:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
 .ctx-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:30px}
 .ctx-notes{resize:none;min-height:62px}
+.planner-shell{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.85fr);gap:16px;align-items:start}
+.planner-form,.planner-result{
+  width:100%;background:var(--surface);border:1.5px solid var(--border);
+  border-radius:14px;padding:16px;box-shadow:var(--shadow);
+}
+.planner-form{display:flex;flex-direction:column;gap:12px}
+.planner-result{display:none;flex-direction:column;gap:12px;min-height:360px}
+.planner-result.visible{display:flex}
+.planner-assignment{min-height:220px;resize:vertical}
+.planner-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.planner-file-name{font-size:.75rem;color:var(--muted)}
+.planner-output{
+  flex:1;white-space:pre-wrap;background:var(--surface-2);border:1.5px solid var(--border);
+  border-radius:10px;padding:14px;overflow:auto;font-size:.84rem;line-height:1.65;color:var(--text);
+}
+.planner-error{display:none;padding:9px 12px;border-radius:9px;background:#fff1f2;border:1px solid #fecdd3;color:#991b1b;font-size:.8rem}
+.planner-result-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.planner-result-title{font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.planner-copy-note{font-size:.75rem;color:var(--muted);min-height:18px}
 
 /* ── Context bar ── */
 #ctx-bar{
@@ -328,6 +353,7 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
   #review-screen{flex-direction:column}
   #doc-panel{width:100%;height:50vh;border-right:none;border-bottom:1px solid var(--border)}
   #comments-panel{width:100%;flex:1}
+  .planner-shell{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -343,51 +369,122 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
 <!-- ── Upload screen ────────────────────────────────────────────────────────── -->
 <div id="upload-screen">
   <h1 class="upload-heading">Your personal supervisor and professor, all in one</h1>
-  <p class="upload-sub">Get honest feedback from your supervisor or a formal grade — your choice.</p>
-  <div id="drop-zone">
-    <span class="dz-icon">📄</span>
-    <div class="dz-label">Drop your file here</div>
-    <div class="dz-sub">or click to browse</div>
-    <div class="dz-types">
-      <span class="type-pill">DOCX</span>
-      <span class="type-pill">PDF</span>
-      <span class="type-pill">PPTX</span>
-      <span class="type-pill">XLSX</span>
+  <p class="upload-sub">Plan an assignment before writing, or review work you already have.</p>
+
+  <div class="start-tabs" role="tablist" aria-label="Choose a Study Buddy workflow">
+    <button class="start-tab active" data-start-tab="review" type="button">Review Existing Work</button>
+    <button class="start-tab" data-start-tab="plan" type="button">Plan Assignment</button>
+  </div>
+
+  <div class="start-panel active" id="review-start-panel">
+    <div id="drop-zone">
+      <span class="dz-icon">📄</span>
+      <div class="dz-label">Drop your file here</div>
+      <div class="dz-sub">or click to browse</div>
+      <div class="dz-types">
+        <span class="type-pill">DOCX</span>
+        <span class="type-pill">PDF</span>
+        <span class="type-pill">PPTX</span>
+        <span class="type-pill">XLSX</span>
+      </div>
+    </div>
+    <div class="upload-error" id="upload-error"></div>
+    <input type="file" id="file-input" accept=".docx,.pdf,.pptx,.xlsx">
+
+    <div class="ctx-form" id="upload-ctx-form">
+      <div class="ctx-form-heading">About your submission</div>
+      <div class="ctx-row">
+        <div class="ctx-field">
+          <label class="ctx-label" for="ctx-subject">Subject / Course</label>
+          <input class="ctx-input" id="ctx-subject" type="text" placeholder="e.g. Econometrics, History">
+        </div>
+        <div class="ctx-field">
+          <label class="ctx-label" for="ctx-type">Submission type</label>
+          <select class="ctx-select" id="ctx-type">
+            <option value="">Select…</option>
+            <option>Essay</option>
+            <option>Research Paper</option>
+            <option>Literature Review</option>
+            <option>Lab Report</option>
+            <option>Case Study</option>
+            <option>Presentation</option>
+            <option>Report</option>
+            <option>Dissertation Chapter</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="ctx-field">
+        <label class="ctx-label" for="ctx-topic">Topic / Title</label>
+        <input class="ctx-input" id="ctx-topic" type="text" placeholder="e.g. The effect of quantitative easing on asset prices">
+      </div>
+      <div class="ctx-field">
+        <label class="ctx-label" for="ctx-notes">Additional context <span class="ctx-optional">(optional)</span></label>
+        <textarea class="ctx-notes" id="ctx-notes" placeholder="e.g. Third-year undergrad, 3,000 word limit, focus on the methodology section…"></textarea>
+      </div>
     </div>
   </div>
-  <div class="upload-error" id="upload-error"></div>
-  <input type="file" id="file-input" accept=".docx,.pdf,.pptx,.xlsx">
 
-  <div class="ctx-form" id="upload-ctx-form">
-    <div class="ctx-form-heading">About your submission</div>
-    <div class="ctx-row">
-      <div class="ctx-field">
-        <label class="ctx-label" for="ctx-subject">Subject / Course</label>
-        <input class="ctx-input" id="ctx-subject" type="text" placeholder="e.g. Econometrics, History">
+  <div class="start-panel" id="plan-start-panel">
+    <div class="planner-shell">
+      <div class="planner-form">
+        <div class="ctx-form-heading">Assignment planner</div>
+        <div class="ctx-field">
+          <label class="ctx-label" for="planner-assignment">Assignment brief</label>
+          <textarea class="ctx-notes planner-assignment" id="planner-assignment" placeholder="Paste the assignment question, marking brief, or instructions here…"></textarea>
+        </div>
+        <div class="planner-actions">
+          <button class="btn" id="planner-file-btn" type="button">Upload brief</button>
+          <span class="planner-file-name" id="planner-file-name"></span>
+          <input type="file" id="planner-file-input" accept=".docx,.pdf,.pptx,.xlsx" style="display:none">
+        </div>
+        <div class="ctx-row">
+          <div class="ctx-field">
+            <label class="ctx-label" for="planner-subject">Subject / Course</label>
+            <input class="ctx-input" id="planner-subject" type="text" placeholder="e.g. Sociology">
+          </div>
+          <div class="ctx-field">
+            <label class="ctx-label" for="planner-type">Submission type</label>
+            <select class="ctx-select" id="planner-type">
+              <option value="">Select…</option>
+              <option>Essay</option>
+              <option>Research Paper</option>
+              <option>Literature Review</option>
+              <option>Lab Report</option>
+              <option>Case Study</option>
+              <option>Presentation</option>
+              <option>Report</option>
+              <option>Dissertation Chapter</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="ctx-row">
+          <div class="ctx-field">
+            <label class="ctx-label" for="planner-topic">Topic / Title</label>
+            <input class="ctx-input" id="planner-topic" type="text" placeholder="e.g. Algorithmic bias in hiring">
+          </div>
+          <div class="ctx-field">
+            <label class="ctx-label" for="planner-word-count">Target word count <span class="ctx-optional">(optional)</span></label>
+            <input class="ctx-input" id="planner-word-count" type="number" min="100" step="50" placeholder="e.g. 2000">
+          </div>
+        </div>
+        <div class="ctx-field">
+          <label class="ctx-label" for="planner-notes">Additional context <span class="ctx-optional">(optional)</span></label>
+          <textarea class="ctx-notes" id="planner-notes" placeholder="e.g. First-year undergraduate, needs Harvard sources, unsure about the argument…"></textarea>
+        </div>
+        <div class="planner-error" id="planner-error"></div>
+        <button class="btn btn-accent" id="planner-generate-btn" type="button">Generate outline</button>
       </div>
-      <div class="ctx-field">
-        <label class="ctx-label" for="ctx-type">Submission type</label>
-        <select class="ctx-select" id="ctx-type">
-          <option value="">Select…</option>
-          <option>Essay</option>
-          <option>Research Paper</option>
-          <option>Literature Review</option>
-          <option>Lab Report</option>
-          <option>Case Study</option>
-          <option>Presentation</option>
-          <option>Report</option>
-          <option>Dissertation Chapter</option>
-          <option>Other</option>
-        </select>
+
+      <div class="planner-result" id="planner-result">
+        <div class="planner-result-head">
+          <span class="planner-result-title">Generated outline</span>
+          <button class="btn" id="planner-copy-btn" type="button">Copy outline</button>
+        </div>
+        <div class="planner-output" id="planner-output"></div>
+        <div class="planner-copy-note" id="planner-copy-note"></div>
       </div>
-    </div>
-    <div class="ctx-field">
-      <label class="ctx-label" for="ctx-topic">Topic / Title</label>
-      <input class="ctx-input" id="ctx-topic" type="text" placeholder="e.g. The effect of quantitative easing on asset prices">
-    </div>
-    <div class="ctx-field">
-      <label class="ctx-label" for="ctx-notes">Additional context <span class="ctx-optional">(optional)</span></label>
-      <textarea class="ctx-notes" id="ctx-notes" placeholder="e.g. Third-year undergrad, 3,000 word limit, focus on the methodology section…"></textarea>
     </div>
   </div>
 </div>
@@ -529,10 +626,14 @@ let state = loadState();
 state.mode    = state.mode    || 'supervisor';
 state.theme   = state.theme   || null;
 state.context = state.context || {subject:'', type:'', topic:'', notes:''};
+state.startTab = state.startTab || 'review';
+state.planner = state.planner || {assignment:'', subject:'', type:'', topic:'', notes:'', targetWordCount:'', outline:''};
 
 let currentParagraphs = [];
 let chatHistory = [];      // [{role, content}, ...]
 let reviewComments = [];
+let plannerStreaming = false;
+let plannerOutline = state.planner.outline || '';
 let reviewHasRun = false;
 let chatStreaming = false;
 let reviewStreaming = false;
@@ -567,6 +668,165 @@ $('#theme-btn').addEventListener('click', ()=>{
   applyTheme();
 });
 applyTheme();
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Start screen tabs + planner
+// ════════════════════════════════════════════════════════════════════════════
+function applyStartTab(tab){
+  state.startTab = tab === 'plan' ? 'plan' : 'review';
+  saveState(state);
+  $$('.start-tab').forEach(btn=>btn.classList.toggle('active', btn.dataset.startTab === state.startTab));
+  $('#review-start-panel').classList.toggle('active', state.startTab === 'review');
+  $('#plan-start-panel').classList.toggle('active', state.startTab === 'plan');
+}
+
+function plannerContextFromFields(){
+  return {
+    subject: $('#planner-subject').value.trim(),
+    type: $('#planner-type').value,
+    topic: $('#planner-topic').value.trim(),
+    notes: $('#planner-notes').value.trim(),
+  };
+}
+
+function savePlannerState(){
+  state.planner = {
+    assignment: $('#planner-assignment').value,
+    subject: $('#planner-subject').value.trim(),
+    type: $('#planner-type').value,
+    topic: $('#planner-topic').value.trim(),
+    notes: $('#planner-notes').value.trim(),
+    targetWordCount: $('#planner-word-count').value.trim(),
+    outline: plannerOutline,
+  };
+  saveState(state);
+}
+
+function loadPlannerState(){
+  const p = state.planner || {};
+  $('#planner-assignment').value = p.assignment || '';
+  $('#planner-subject').value = p.subject || '';
+  $('#planner-type').value = p.type || '';
+  $('#planner-topic').value = p.topic || '';
+  $('#planner-notes').value = p.notes || '';
+  $('#planner-word-count').value = p.targetWordCount || '';
+  plannerOutline = p.outline || '';
+  renderPlannerOutput();
+}
+
+function renderPlannerOutput(){
+  $('#planner-output').textContent = plannerOutline;
+  $('#planner-result').classList.toggle('visible', !!plannerOutline || plannerStreaming);
+}
+
+function showPlannerError(msg){
+  const el = $('#planner-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function clearPlannerError(){
+  const el = $('#planner-error');
+  el.textContent = '';
+  el.style.display = 'none';
+}
+
+async function handlePlannerUpload(file){
+  clearPlannerError();
+  $('#planner-file-name').textContent = 'Reading ' + file.name + '...';
+  const fd = new FormData();
+  fd.append('file', file);
+  try{
+    const res = await fetch('/api/upload', {method:'POST', body:fd});
+    const data = await res.json();
+    if(!res.ok){
+      showPlannerError(data.error || 'Could not read that file.');
+      return;
+    }
+    $('#planner-assignment').value = data.paragraphs.join('\n\n');
+    $('#planner-file-name').textContent = file.name;
+    savePlannerState();
+  }catch(e){
+    showPlannerError('Could not reach the server. Is app.py running?');
+  }
+}
+
+async function generateOutline(){
+  if(plannerStreaming) return;
+  const assignment = $('#planner-assignment').value.trim();
+  if(!assignment){
+    showPlannerError('Paste an assignment brief or upload one first.');
+    return;
+  }
+  clearPlannerError();
+  plannerStreaming = true;
+  plannerOutline = '';
+  renderPlannerOutput();
+  $('#planner-generate-btn').disabled = true;
+  $('#planner-generate-btn').textContent = 'Generating...';
+  $('#planner-copy-note').textContent = '';
+  savePlannerState();
+
+  try{
+    const res = await fetch('/api/plan',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        assignment,
+        target_word_count: $('#planner-word-count').value.trim(),
+        context: plannerContextFromFields(),
+      })
+    });
+    if(!res.ok){
+      const d = await res.json();
+      showPlannerError(d.error || 'Planning failed.');
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    while(true){
+      const {done, value} = await reader.read();
+      if(done) break;
+      plannerOutline += dec.decode(value, {stream:true});
+      renderPlannerOutput();
+    }
+    plannerOutline += dec.decode();
+    renderPlannerOutput();
+    savePlannerState();
+  }catch(e){
+    showPlannerError('Could not reach the server. Is app.py running?');
+  } finally {
+    plannerStreaming = false;
+    $('#planner-generate-btn').disabled = false;
+    $('#planner-generate-btn').textContent = 'Generate outline';
+    renderPlannerOutput();
+  }
+}
+
+async function copyPlannerOutline(){
+  if(!plannerOutline) return;
+  try{
+    await navigator.clipboard.writeText(plannerOutline);
+    $('#planner-copy-note').textContent = 'Copied.';
+  }catch(e){
+    $('#planner-copy-note').textContent = 'Select the outline text to copy it.';
+  }
+}
+
+$$('.start-tab').forEach(btn=>btn.addEventListener('click', ()=>applyStartTab(btn.dataset.startTab)));
+['planner-assignment','planner-subject','planner-type','planner-topic','planner-notes','planner-word-count'].forEach(id=>{
+  $('#' + id).addEventListener('input', savePlannerState);
+  $('#' + id).addEventListener('change', savePlannerState);
+});
+$('#planner-file-btn').addEventListener('click', ()=>$('#planner-file-input').click());
+$('#planner-file-input').addEventListener('change', e=>{
+  if(e.target.files[0]) handlePlannerUpload(e.target.files[0]);
+  e.target.value = '';
+});
+$('#planner-generate-btn').addEventListener('click', generateOutline);
+$('#planner-copy-btn').addEventListener('click', copyPlannerOutline);
+loadPlannerState();
+applyStartTab(state.startTab);
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Screen helpers

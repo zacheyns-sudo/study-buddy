@@ -170,6 +170,10 @@ html.dark .truncation-banner{background:rgba(234,179,8,.12);border-color:rgba(23
 }
 .para.active-para .para-num{background:var(--accent);border-color:var(--accent);color:#fff}
 .para-text{font-size:.88rem;line-height:1.7;color:var(--text)}
+.comment-target{
+  border-radius:4px;padding:1px 2px;border-bottom:2px solid currentColor;
+  box-decoration-break:clone;-webkit-box-decoration-break:clone;
+}
 
 /* ── Comments panel ── */
 #comments-panel{width:40%;display:flex;flex-direction:column;background:var(--surface-2);overflow:hidden}
@@ -528,6 +532,7 @@ state.context = state.context || {subject:'', type:'', topic:'', notes:''};
 
 let currentParagraphs = [];
 let chatHistory = [];      // [{role, content}, ...]
+let reviewComments = [];
 let reviewHasRun = false;
 let chatStreaming = false;
 let reviewStreaming = false;
@@ -541,6 +546,11 @@ let fullReviewComplete = false;
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function $(sel,ctx=document){return ctx.querySelector(sel);}
 function $$(sel,ctx=document){return [...ctx.querySelectorAll(sel)];}
+function paragraphIndex(value){
+  if(Number.isInteger(value)) return value;
+  if(typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim());
+  return null;
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Theme
@@ -573,7 +583,6 @@ function showReviewScreen(){
 }
 $('#new-review-btn').addEventListener('click', ()=>{
   currentParagraphs = [];
-  chatHistory = [];
   reviewHasRun = false;
   resetReviewProgress();
   clearChat();
@@ -646,7 +655,6 @@ async function handleUpload(file){
     if(!res.ok){ showUploadError(data.error || 'Upload failed'); icon.textContent=origIcon; dropZone.classList.remove('drag-over'); return; }
     currentParagraphs = data.paragraphs;
     console.log(`[StudyBuddy] Upload complete — ${data.paragraphs.length} paragraphs, truncated=${data.truncated}, chars=${data.char_count}`);
-    chatHistory = [];
     reviewHasRun = false;
     resetReviewProgress();
     clearChat();
@@ -745,6 +753,11 @@ function scrollToComment(paraIdx){
 $('#run-btn').addEventListener('click', startReview);
 
 function clearComments(){
+  reviewComments = [];
+  currentParagraphs.forEach((p, i)=>{
+    const textEl = $(`#para-${i} .para-text`);
+    if(textEl) textEl.innerHTML = esc(p);
+  });
   $('#cards-list').innerHTML = '';
   const sc = $('#summary-card');
   sc.innerHTML = '';
@@ -793,6 +806,7 @@ function updateProgressLabel(){
 async function startReview(){
   if(reviewStreaming || !currentParagraphs.length || fullReviewComplete) return;
 
+  const wasFurtherReview = reviewCursor > 0;
   const chunk = currentParagraphs.slice(reviewCursor, reviewCursor + REVIEW_CHUNK_SIZE);
   if(!chunk.length) return;
 
@@ -887,6 +901,7 @@ async function startReview(){
     }
 
     // chunk completed successfully — advance cursor
+    if(wasFurtherReview) clearChat();
     reviewCursor += chunk.length;
     reviewHasRun = true;
     $('#filter-row').style.display = 'flex';
@@ -934,8 +949,56 @@ function renderSummary(obj){
 const VALID_TYPES = new Set(['strength','grammar','content','structure','clarity','evidence','citations']);
 const VALID_SEVS  = new Set(['low','medium','high']);
 
+function insertCommentCardInOrder(card){
+  const list = $('#cards-list');
+  const cardIdx = Number(card.dataset.idx);
+  const nextCard = $$('#cards-list .comment-card').find(existing=>{
+    const existingIdx = Number(existing.dataset.idx);
+    return existingIdx > cardIdx;
+  });
+  if(nextCard) list.insertBefore(card, nextCard);
+  else list.appendChild(card);
+}
+
+function highlightCommentTarget(obj, type){
+  const idx = obj.paragraph_index;
+  const textEl = $(`#para-${idx} .para-text`);
+  const original = currentParagraphs[idx] || '';
+  if(!textEl || !original) return;
+
+  const ranges = [];
+  reviewComments
+    .filter(c=>c.paragraph_index === idx && c.quote)
+    .forEach(c=>{
+      const quote = String(c.quote || '').trim();
+      if(!quote) return;
+      const start = original.indexOf(quote);
+      if(start < 0) return;
+      const end = start + quote.length;
+      const overlaps = ranges.some(r=>start < r.end && end > r.start);
+      if(!overlaps) ranges.push({start, end, type:c.type});
+    });
+
+  if(!ranges.length){
+    textEl.innerHTML = esc(original);
+    return;
+  }
+
+  ranges.sort((a,b)=>a.start - b.start);
+  let html = '';
+  let pos = 0;
+  ranges.forEach(r=>{
+    html += esc(original.slice(pos, r.start));
+    html += `<mark class="comment-target t-${esc(r.type)}">${esc(original.slice(r.start, r.end))}</mark>`;
+    pos = r.end;
+  });
+  html += esc(original.slice(pos));
+  textEl.innerHTML = html;
+}
+
 function renderComment(obj){
-  if(!obj.paragraph_index && obj.paragraph_index !== 0){
+  const idx = paragraphIndex(obj.paragraph_index);
+  if(idx === null || idx < 0 || idx >= currentParagraphs.length){
     console.warn('[StudyBuddy] renderComment: skipping — missing paragraph_index', obj);
     return;
   }
@@ -947,23 +1010,28 @@ function renderComment(obj){
   }
   const type = VALID_TYPES.has(obj.type) ? obj.type : 'content';
   const sev  = VALID_SEVS.has(obj.severity) ? obj.severity : 'medium';
+  const comment = {...obj, paragraph_index: idx, type, severity: sev};
+  reviewComments.push(comment);
+  highlightCommentTarget(comment, type);
+
   const card = document.createElement('div');
   card.className = 'comment-card';
   card.dataset.type = type;
-  card.dataset.idx  = obj.paragraph_index;
+  card.dataset.idx  = idx;
   card.innerHTML = `
     <div class="card-header">
       <span class="type-badge t-${esc(type)}">${esc(type)}</span>
       <span class="sev-dot sev-${esc(sev)}"></span>
-      <span class="para-ref">¶${obj.paragraph_index}</span>
+      <span class="para-ref">¶${idx}</span>
     </div>
     ${obj.quote ? `<div class="card-quote">${esc(obj.quote)}</div>` : ''}
     <div class="card-comment">${esc(obj.comment || '')}</div>
     ${obj.suggestion ? `<div class="card-suggestion">${esc(obj.suggestion)}</div>` : ''}
   `;
-  card.addEventListener('mouseenter', ()=>highlightPara(obj.paragraph_index));
+  card.addEventListener('mouseenter', ()=>highlightPara(idx));
   card.addEventListener('mouseleave', ()=>{ $$('.para.active-para').forEach(el=>el.classList.remove('active-para')); });
-  $('#cards-list').appendChild(card);
+  card.addEventListener('click', ()=>highlightPara(idx));
+  insertCommentCardInOrder(card);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -991,10 +1059,13 @@ $('#chat-send-btn').addEventListener('click', submitChat);
 $('#chat-textarea').addEventListener('keydown', e=>{
   if(e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); submitChat(); }
 });
-$('#clear-chat-btn').addEventListener('click', ()=>{ chatHistory=[]; clearChat(); });
+$('#clear-chat-btn').addEventListener('click', clearChat);
 
 function clearChat(){
+  chatHistory = [];
   $('#chat-history').innerHTML = '';
+  $('#chat-textarea').value = '';
+  $('#chat-textarea').style.height = 'auto';
 }
 
 function appendBubble(role, text){
@@ -1051,7 +1122,7 @@ async function submitChat(){
 
     chatHistory.push({role:'user', content: msg});
     chatHistory.push({role:'assistant', content: fullResponse});
-    if(chatHistory.length > 20) chatHistory.splice(0, 2);
+    if(chatHistory.length > 8) chatHistory.splice(0, chatHistory.length - 8);
 
   }catch(e){
     assistantBubble.textContent = 'Could not reach the server.';

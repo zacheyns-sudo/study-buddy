@@ -394,14 +394,24 @@ def _review_stream(paragraphs, mode, rubric="", context=None,
 
 
 def _chat_stream(messages):
-    with client.messages.stream(
-        model="claude-sonnet-4-6",
-        max_tokens=2048,
-        system=[{"type": "text", "text": CHAT_PROMPT, "cache_control": {"type": "ephemeral"}}],
-        messages=messages,
-    ) as stream:
-        for text in stream.text_stream:
-            yield text
+    try:
+        with client.messages.stream(
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            system=[{"type": "text", "text": CHAT_PROMPT, "cache_control": {"type": "ephemeral"}}],
+            messages=messages,
+        ) as stream:
+            for text in stream.text_stream:
+                yield text
+    except Exception as e:
+        yield _ai_stream_error_text(e)
+
+
+def _ai_stream_error_text(error):
+    message = str(error)
+    if "overloaded_error" in message or "Overloaded" in message:
+        return "STUDYBUDDY_ERROR: The AI service is overloaded right now. Please try again in a moment."
+    return f"STUDYBUDDY_ERROR: AI service error: {message}"
 
 
 def _plan_stream(assignment, context=None, target_word_count=""):
@@ -414,14 +424,17 @@ def _plan_stream(assignment, context=None, target_word_count=""):
         "Create a paragraph-level essay outline for this assignment."
         f"{ctx_block}{word_block}\n\n[ASSIGNMENT BRIEF]\n{assignment.strip()}\n[/ASSIGNMENT BRIEF]"
     )
-    with client.messages.stream(
-        model="claude-sonnet-4-6",
-        max_tokens=4096,
-        system=[{"type": "text", "text": PLANNER_PROMPT, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": user_content}],
-    ) as stream:
-        for text in stream.text_stream:
-            yield text
+    try:
+        with client.messages.stream(
+            model="claude-sonnet-4-6",
+            max_tokens=4096,
+            system=[{"type": "text", "text": PLANNER_PROMPT, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user_content}],
+        ) as stream:
+            for text in stream.text_stream:
+                yield text
+    except Exception as e:
+        yield _ai_stream_error_text(e)
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ROUTES

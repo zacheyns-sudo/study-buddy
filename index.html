@@ -1057,6 +1057,14 @@ async function generateOutline(){
     }
     plannerOutline += dec.decode();
     renderPlannerOutput();
+    if(plannerOutline.startsWith('STUDYBUDDY_ERROR:')){
+      const msg = plannerOutline.replace('STUDYBUDDY_ERROR:', '').trim();
+      plannerOutline = '';
+      renderPlannerOutput();
+      showPlannerError(msg || 'The AI service could not complete the outline. Please try again.');
+      showUploadScreen();
+      return;
+    }
     saveCurrentOutline();
     savePlannerState();
   }catch(e){

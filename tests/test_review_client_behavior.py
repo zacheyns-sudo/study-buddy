@@ -19,7 +19,14 @@ class ReviewClientBehaviorTest(unittest.TestCase):
 
     def test_comment_quote_marks_the_matching_document_text(self):
         self.assertIn("function highlightCommentTarget(obj, type)", self.html)
+        self.assertIn("function renderHighlightedDraft()", self.html)
+        self.assertIn('id="draft-highlight-panel"', self.html)
         self.assertIn('class="comment-target', self.html)
+
+    def test_partial_review_stream_can_advance_to_next_chunk(self):
+        self.assertIn("let receivedChunkItems = 0;", self.html)
+        self.assertIn("if(!streamDone && receivedChunkItems === 0)", self.html)
+        self.assertIn("showReviewError(streamError || 'Feedback was partially saved", self.html)
 
     def test_planner_start_tab_and_streaming_hooks_exist(self):
         self.assertIn('data-start-tab="plan"', self.html)

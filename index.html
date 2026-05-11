@@ -250,6 +250,13 @@ html.dark .upload-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
   transition:border-color .15s,box-shadow .15s;
 }
 #draft-editor:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim),var(--shadow)}
+.draft-highlight-panel{
+  display:none;margin-top:12px;background:var(--surface);border:1.5px solid var(--border);
+  border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);
+}
+.draft-highlight-panel.visible{display:block}
+.draft-highlight-title{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px}
+.draft-highlight-body{font-size:.9rem;line-height:1.8;color:var(--text);white-space:pre-wrap}
 .draft-stale-notice{
   display:none;margin:0 0 12px;padding:9px 12px;border-radius:10px;
   background:var(--accent-dim);border:1.5px solid var(--border);color:var(--text);
@@ -670,6 +677,10 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
     <div class="draft-stale-notice" id="draft-stale-notice">Draft changed — get feedback again when you want fresh coach notes.</div>
     <div class="draft-editor-wrap">
       <textarea id="draft-editor" placeholder="Your draft will appear here."></textarea>
+    </div>
+    <div class="draft-highlight-panel" id="draft-highlight-panel">
+      <div class="draft-highlight-title">Highlighted places to work on</div>
+      <div class="draft-highlight-body" id="draft-highlight-body"></div>
     </div>
     <div id="para-list"></div>
   </div>
@@ -1471,6 +1482,7 @@ function clearComments(){
     const textEl = $(`#para-${i} .para-text`);
     if(textEl) textEl.innerHTML = esc(p);
   });
+  renderHighlightedDraft();
   $('#cards-list').innerHTML = '';
   const sc = $('#summary-card');
   sc.innerHTML = '';
@@ -1560,6 +1572,7 @@ async function startReview(){
     let parseErrors = 0;
     let streamDone = false;
     let streamError = '';
+    let receivedChunkItems = 0;
     console.log(`[StudyBuddy] Reviewing paragraphs ${reviewCursor}–${reviewCursor + chunk.length - 1} of ${currentParagraphs.length}, mode=${state.mode}, final=${isFinalChunk}`);
 
     function handleReviewEvent(obj){
@@ -1569,8 +1582,10 @@ async function startReview(){
         streamDone = true;
         console.log(`[StudyBuddy] Chunk complete — server count=${obj.count}`);
       } else if(obj.type === 'summary'){
+        receivedChunkItems++;
         renderSummary(obj);
       } else {
+        receivedChunkItems++;
         renderComment(obj);
       }
     }
@@ -1607,10 +1622,13 @@ async function startReview(){
     if(parseErrors > 0){
       console.warn(`[StudyBuddy] ${parseErrors} NDJSON parse error(s) during chunk`);
     }
-    if(!streamDone){
+    if(!streamDone && receivedChunkItems === 0){
       console.warn('[StudyBuddy] Chunk stream ended without done event');
       showReviewError(streamError || 'The review connection closed before this section finished. Try this section again; it will resume from the same place.');
       return;  // do not advance the cursor
+    } else if(!streamDone){
+      console.warn('[StudyBuddy] Chunk stream ended without done event after partial feedback');
+      showReviewError(streamError || 'Feedback was partially saved. Use More feedback to continue with the next section.');
     }
 
     // chunk completed successfully — advance cursor
@@ -1673,12 +1691,8 @@ function insertCommentCardInOrder(card){
   else list.appendChild(card);
 }
 
-function highlightCommentTarget(obj, type){
-  const idx = obj.paragraph_index;
-  const textEl = $(`#para-${idx} .para-text`);
+function commentRangesForParagraph(idx){
   const original = currentParagraphs[idx] || '';
-  if(!textEl || !original) return;
-
   const ranges = [];
   reviewComments
     .filter(c=>c.paragraph_index === idx && c.quote)
@@ -1691,13 +1705,11 @@ function highlightCommentTarget(obj, type){
       const overlaps = ranges.some(r=>start < r.end && end > r.start);
       if(!overlaps) ranges.push({start, end, type:c.type});
     });
+  return ranges.sort((a,b)=>a.start - b.start);
+}
 
-  if(!ranges.length){
-    textEl.innerHTML = esc(original);
-    return;
-  }
-
-  ranges.sort((a,b)=>a.start - b.start);
+function renderMarkedParagraph(original, ranges){
+  if(!ranges.length) return esc(original);
   let html = '';
   let pos = 0;
   ranges.forEach(r=>{
@@ -1705,8 +1717,40 @@ function highlightCommentTarget(obj, type){
     html += `<mark class="comment-target t-${esc(r.type)}">${esc(original.slice(r.start, r.end))}</mark>`;
     pos = r.end;
   });
-  html += esc(original.slice(pos));
-  textEl.innerHTML = html;
+  return html + esc(original.slice(pos));
+}
+
+function renderHighlightedDraft(){
+  const panel = $('#draft-highlight-panel');
+  const body = $('#draft-highlight-body');
+  if(!panel || !body) return;
+
+  const parts = [];
+  currentParagraphs.forEach((p, i)=>{
+    const ranges = commentRangesForParagraph(i);
+    if(ranges.length) parts.push(renderMarkedParagraph(p, ranges));
+  });
+
+  body.innerHTML = parts.join('\n\n');
+  panel.classList.toggle('visible', parts.length > 0);
+}
+
+function highlightCommentTarget(obj, type){
+  const idx = obj.paragraph_index;
+  const textEl = $(`#para-${idx} .para-text`);
+  const original = currentParagraphs[idx] || '';
+  if(!textEl || !original) return;
+
+  const ranges = commentRangesForParagraph(idx);
+
+  if(!ranges.length){
+    textEl.innerHTML = esc(original);
+    renderHighlightedDraft();
+    return;
+  }
+
+  textEl.innerHTML = renderMarkedParagraph(original, ranges);
+  renderHighlightedDraft();
 }
 
 function renderComment(obj){

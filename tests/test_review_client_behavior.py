@@ -32,6 +32,14 @@ class ReviewClientBehaviorTest(unittest.TestCase):
         self.assertIn("handlePlannerUpload", self.html)
         self.assertIn("copyPlannerOutline", self.html)
 
+    def test_pasted_draft_entry_and_editable_review_hooks_exist(self):
+        self.assertIn('id="draft-textarea"', self.html)
+        self.assertIn("async function handleDraftStart()", self.html)
+        self.assertIn("fetch('/api/draft'", self.html)
+        self.assertIn('id="draft-editor"', self.html)
+        self.assertIn("syncDraftFromEditor", self.html)
+        self.assertIn("Draft changed", self.html)
+
 
 if __name__ == "__main__":
     unittest.main()

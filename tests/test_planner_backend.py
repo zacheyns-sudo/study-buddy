@@ -68,6 +68,33 @@ class PlannerBackendTest(unittest.TestCase):
         self.assertIn("Economics", call["messages"][0]["content"])
         self.assertIn("paragraph-level essay outline", call["system"][0]["text"])
 
+    def test_draft_rejects_empty_text(self):
+        res = self.client.post("/api/draft", json={"text": "   \n\n  "})
+
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("No draft text provided", res.get_json()["error"])
+
+    def test_draft_converts_pasted_text_to_paragraphs(self):
+        res = self.client.post("/api/draft", json={
+            "text": " First paragraph. \r\nstill first.\n\nSecond paragraph.\n\n  Third paragraph.  "
+        })
+
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data["paragraphs"], [
+            "First paragraph.\nstill first.",
+            "Second paragraph.",
+            "Third paragraph.",
+        ])
+        self.assertFalse(data["truncated"])
+        self.assertEqual(data["char_count"], sum(len(p) for p in data["paragraphs"]))
+
+    def test_plain_text_without_blank_lines_falls_back_to_lines(self):
+        self.assertEqual(
+            study_buddy.parse_plain_text("One line\nSecond line\n  \n"),
+            ["One line", "Second line"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

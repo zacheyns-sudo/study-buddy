@@ -26,7 +26,7 @@ ALLOWED_EXT = {".docx", ".pdf", ".pptx", ".xlsx"}
 #  SYSTEM PROMPTS
 # ══════════════════════════════════════════════════════════════════════════════
 
-SUPERVISOR_PROMPT = """You are a senior academic supervisor reviewing a student's work. You are invested in their growth and development as a thinker and writer. You are strict about academic standards and intellectual rigour — you won't accept vague claims, unsupported assertions, or lazy structure — but your tone is engaged and mentoring, like sitting across a desk working through the paper together. Every comment you make teaches something; you never just flag a problem without explaining why it matters.
+SUPERVISOR_PROMPT = """You are a senior academic supervisor working with a student on a draft. You are invested in their growth and development as a thinker and writer. You are strict about academic standards and intellectual rigour — you won't accept vague claims, unsupported assertions, or lazy structure — but your tone is engaged and mentoring, like sitting across a desk improving the paper together. Every comment you make teaches something; you never just flag a problem without explaining why it matters.
 
 Good work deserves recognition. You actively look for and call out what the student has done well — a well-constructed argument, effective use of evidence, clear structure, precise language. Positive feedback is not filler; it tells the student what to keep and build on.
 
@@ -47,7 +47,7 @@ Each comment:
 {"paragraph_index": 2, "type": "content", "quote": "verbatim phrase from text ≤15 words", "comment": "what is weak or strong and why it matters", "suggestion": "how the student should approach fixing or extending this — null for praise-only strengths", "severity": "low|medium|high"}
 
 After all comments, one final line:
-{"type": "summary", "overall_grade": null, "summary_text": "Conversational 2-3 sentence summary: what is genuinely working well, the single most important thing to fix before the next draft, and one concrete action to take."}
+{"type": "summary", "overall_grade": null, "summary_text": "Conversational 2-3 sentence summary: what is genuinely working well and worth keeping, the single most important thing to work on next, and one concrete revision move to make."}
 
 Rules:
 - paragraph_index must be an integer matching a [N] index present in the document
@@ -211,6 +211,21 @@ def parse_xlsx(file_bytes):
         return paragraphs
     finally:
         wb.close()
+
+
+def parse_plain_text(text):
+    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized:
+        return []
+
+    def clean_block(block):
+        return "\n".join(line.strip() for line in block.strip().split("\n") if line.strip())
+
+    blocks = [clean_block(p) for p in _re.split(r"\n\s*\n+", normalized) if clean_block(p)]
+    if len(blocks) > 1:
+        return blocks
+
+    return [line.strip() for line in normalized.split("\n") if line.strip()]
 
 
 def extract_text(filename, file_bytes):
@@ -478,6 +493,26 @@ def upload():
     })
 
 
+@app.route("/api/draft", methods=["POST"])
+def draft():
+    data = request.get_json(silent=True) or {}
+    text = data.get("text") or ""
+
+    if not text.strip():
+        return jsonify({"error": "No draft text provided"}), 400
+
+    paragraphs = parse_plain_text(text)
+    if not paragraphs:
+        return jsonify({"error": "No readable text found in this draft."}), 422
+
+    trimmed, truncated = chunk_paragraphs(paragraphs)
+    return jsonify({
+        "paragraphs": trimmed,
+        "truncated": truncated,
+        "char_count": sum(len(p) for p in trimmed)
+    })
+
+
 @app.route("/api/review", methods=["POST"])
 def review():
     data = request.get_json(silent=True) or {}
@@ -526,7 +561,7 @@ def chat():
             return jsonify({"error": "No document loaded"}), 400
         doc = numbered_doc(paragraphs)
         ctx_block = _build_context_block(context)
-        intro = f"Here is the document we'll be discussing.{ctx_block}\n\n{doc}"
+        intro = f"Here is the draft we'll be working on together.{ctx_block}\n\n{doc}"
         messages = [{
             "role": "user",
             "content": [

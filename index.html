@@ -114,6 +114,24 @@ html.dark #top-bar{background:rgba(23,21,42,.9)}
   background:#fff1f2;border:1px solid #fecdd3;color:#991b1b;font-size:.85rem;display:none;
 }
 html.dark .upload-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);color:#fca5a5}
+.draft-start{
+  width:100%;max-width:760px;background:var(--surface);border:1.5px solid var(--border);
+  border-radius:14px;padding:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;
+}
+.draft-start-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.draft-start-title{font-size:.92rem;font-weight:850;color:var(--text);line-height:1.25}
+.draft-start-sub{font-size:.78rem;color:var(--muted);line-height:1.5;margin-top:2px}
+#draft-textarea{
+  min-height:240px;resize:vertical;border:1.5px solid var(--border);border-radius:10px;
+  padding:13px 14px;background:var(--surface-2);color:var(--text);font-size:.9rem;
+  line-height:1.7;outline:none;transition:border-color .15s,box-shadow .15s;width:100%;
+}
+#draft-textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.draft-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.draft-file-toggle{font-size:.76rem;color:var(--muted);background:none;border:none;cursor:pointer;padding:0}
+.draft-file-toggle:hover{color:var(--accent)}
+#file-upload-wrap{display:none;width:100%;justify-content:center}
+#file-upload-wrap.open{display:flex}
 
 /* ── Submission context form ── */
 .ctx-form{width:100%;max-width:480px;display:flex;flex-direction:column;gap:12px}
@@ -220,6 +238,25 @@ html.dark .upload-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
   overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:4px;
 }
 #doc-filename{font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px}
+.draft-workspace-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.draft-kicker{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.draft-title{font-size:1.25rem;font-weight:900;letter-spacing:0;color:var(--text);line-height:1.2;margin-top:2px}
+.draft-meta{font-size:.78rem;color:var(--muted);line-height:1.5;margin-top:3px}
+.draft-editor-wrap{position:relative;margin-top:8px}
+#draft-editor{
+  width:100%;min-height:52vh;resize:vertical;border:1.5px solid var(--border);
+  border-radius:12px;padding:18px 20px;background:var(--surface);color:var(--text);
+  font-size:.95rem;line-height:1.8;outline:none;box-shadow:var(--shadow);
+  transition:border-color .15s,box-shadow .15s;
+}
+#draft-editor:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim),var(--shadow)}
+.draft-stale-notice{
+  display:none;margin:0 0 12px;padding:9px 12px;border-radius:10px;
+  background:var(--accent-dim);border:1.5px solid var(--border);color:var(--text);
+  font-size:.8rem;line-height:1.45;
+}
+.draft-stale-notice.visible{display:block}
+#para-list{display:none}
 .truncation-banner{
   padding:10px 14px;border-radius:10px;background:#fefce8;border:1px solid #fef08a;
   color:#854d0e;font-size:.8rem;margin-bottom:14px;display:none;
@@ -243,6 +280,7 @@ html.dark .truncation-banner{background:rgba(234,179,8,.12);border-color:rgba(23
 
 /* ── Comments panel ── */
 #comments-panel{width:40%;display:flex;flex-direction:column;background:var(--surface-2);overflow:hidden}
+.coach-panel-title{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 
 /* mode toggle */
 .panel-toolbar{
@@ -255,7 +293,7 @@ html.dark .truncation-banner{background:rgba(234,179,8,.12);border-color:rgba(23
   color:var(--muted);font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s;
 }
 .mode-btn.active{background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(99,102,241,.35)}
-.review-row{display:flex;align-items:center;gap:10px}
+.review-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .review-row .btn{flex-shrink:0}
 #streaming-label{font-size:.78rem;color:var(--muted);display:none}
 #review-progress{font-size:.78rem;color:var(--muted)}
@@ -394,6 +432,8 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
   #review-screen{flex-direction:column}
   #doc-panel{width:100%;height:50vh;border-right:none;border-bottom:1px solid var(--border)}
   #comments-panel{width:100%;flex:1}
+  #draft-editor{min-height:30vh}
+  .draft-workspace-head{flex-direction:column}
   .planner-page-toolbar{align-items:flex-start;flex-direction:column}
   .planner-page-actions{justify-content:flex-start}
   .planner-page-body{padding:16px 12px 28px}
@@ -414,24 +454,39 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
 
 <!-- ── Upload screen ────────────────────────────────────────────────────────── -->
 <div id="upload-screen">
-  <h1 class="upload-heading">Your personal supervisor and professor, all in one</h1>
-  <p class="upload-sub">Plan an assignment before writing, or review work you already have.</p>
+  <h1 class="upload-heading">Work through your draft with a study coach</h1>
+  <p class="upload-sub">Paste what you have, keep editing on the page, and get feedback that helps your next revision.</p>
 
   <div class="start-tabs" role="tablist" aria-label="Choose a Study Buddy workflow">
-    <button class="start-tab active" data-start-tab="review" type="button">Review Existing Work</button>
+    <button class="start-tab active" data-start-tab="review" type="button">Work On Draft</button>
     <button class="start-tab" data-start-tab="plan" type="button">Plan Assignment</button>
   </div>
 
   <div class="start-panel active" id="review-start-panel">
-    <div id="drop-zone">
-      <span class="dz-icon">📄</span>
-      <div class="dz-label">Drop your file here</div>
-      <div class="dz-sub">or click to browse</div>
-      <div class="dz-types">
-        <span class="type-pill">DOCX</span>
-        <span class="type-pill">PDF</span>
-        <span class="type-pill">PPTX</span>
-        <span class="type-pill">XLSX</span>
+    <div class="draft-start">
+      <div class="draft-start-head">
+        <div>
+          <div class="draft-start-title">Paste the draft you are working on</div>
+          <div class="draft-start-sub">You can keep editing it inside Study Buddy before asking for coach notes.</div>
+        </div>
+      </div>
+      <textarea id="draft-textarea" placeholder="Paste your essay, report, or section draft here..."></textarea>
+      <div class="draft-actions">
+        <button class="btn btn-accent" id="draft-start-btn" type="button">Start working with this draft</button>
+        <button class="draft-file-toggle" id="draft-file-toggle" type="button">Upload a file instead</button>
+      </div>
+    </div>
+    <div id="file-upload-wrap">
+      <div id="drop-zone">
+        <span class="dz-icon">📄</span>
+        <div class="dz-label">Drop your file here</div>
+        <div class="dz-sub">or click to browse</div>
+        <div class="dz-types">
+          <span class="type-pill">DOCX</span>
+          <span class="type-pill">PDF</span>
+          <span class="type-pill">PPTX</span>
+          <span class="type-pill">XLSX</span>
+        </div>
       </div>
     </div>
     <div class="upload-error" id="upload-error"></div>
@@ -558,7 +613,13 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
 
   <!-- Document panel -->
   <div id="doc-panel">
-    <div id="doc-filename"></div>
+    <div class="draft-workspace-head">
+      <div>
+        <div class="draft-kicker">Your draft</div>
+        <div class="draft-title">Keep shaping the writing here</div>
+        <div class="draft-meta" id="doc-filename"></div>
+      </div>
+    </div>
 
     <!-- context summary bar -->
     <div id="ctx-bar" style="display:none">
@@ -604,7 +665,11 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
     </div>
 
     <div class="truncation-banner" id="truncation-banner">
-      ⚠ Document truncated to the first ~15,000 tokens. Feedback covers the beginning of your document.
+      Draft truncated to the first ~15,000 tokens. Feedback covers the beginning of your draft.
+    </div>
+    <div class="draft-stale-notice" id="draft-stale-notice">Draft changed — get feedback again when you want fresh coach notes.</div>
+    <div class="draft-editor-wrap">
+      <textarea id="draft-editor" placeholder="Your draft will appear here."></textarea>
     </div>
     <div id="para-list"></div>
   </div>
@@ -614,21 +679,22 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
 
     <!-- toolbar -->
     <div class="panel-toolbar">
+      <div class="coach-panel-title">Coach notes</div>
       <div class="mode-toggle">
-        <button class="mode-btn active" data-mode="supervisor" id="btn-supervisor">Supervisor</button>
+        <button class="mode-btn active" data-mode="supervisor" id="btn-supervisor">Coach</button>
         <button class="mode-btn" data-mode="grading" id="btn-grading">Grading</button>
       </div>
       <div class="review-row">
         <button class="btn btn-accent" id="run-btn">
-          <span class="run-label">Run Review</span>
+          <span class="run-label">Get feedback</span>
         </button>
-        <span id="streaming-label">Reading your document…<span id="streaming-cursor"></span></span>
+        <span id="streaming-label">Reading your draft…<span id="streaming-cursor"></span></span>
         <span id="review-progress"></span>
       </div>
     </div>
 
     <!-- mode-change notice -->
-    <div id="mode-change-notice">Mode changed — run a new review to see updated feedback.</div>
+    <div id="mode-change-notice">Mode changed — get feedback again to see updated notes.</div>
 
     <!-- rubric (grading mode only) -->
     <div id="rubric-section">
@@ -665,7 +731,7 @@ html.dark #review-error{background:rgba(239,68,68,.12);border-color:rgba(239,68,
     <!-- chat panel -->
     <div id="chat-panel">
       <div class="chat-header">
-        <span class="chat-header-label">Chat with your supervisor</span>
+        <span class="chat-header-label">Chat with your coach</span>
         <button id="clear-chat-btn">Clear chat</button>
       </div>
       <div id="chat-history"></div>
@@ -690,11 +756,13 @@ let state = loadState();
 state.mode    = state.mode    || 'supervisor';
 state.theme   = state.theme   || null;
 state.context = state.context || {subject:'', type:'', topic:'', notes:''};
+state.draftText = state.draftText || '';
 state.startTab = state.startTab || 'review';
 state.planner = state.planner || {assignment:'', subject:'', type:'', topic:'', notes:'', targetWordCount:'', outline:''};
 state.savedOutlines = Array.isArray(state.savedOutlines) ? state.savedOutlines : [];
 
 let currentParagraphs = [];
+let currentDraftText = '';
 let chatHistory = [];      // [{role, content}, ...]
 let reviewComments = [];
 let plannerStreaming = false;
@@ -1174,6 +1242,16 @@ applyMode(state.mode);
 const dropZone  = $('#drop-zone');
 const fileInput = $('#file-input');
 const uploadErr = $('#upload-error');
+$('#draft-textarea').value = state.draftText || '';
+
+$('#draft-file-toggle').addEventListener('click', ()=>{
+  $('#file-upload-wrap').classList.toggle('open');
+});
+$('#draft-start-btn').addEventListener('click', handleDraftStart);
+$('#draft-textarea').addEventListener('input', ()=>{
+  state.draftText = $('#draft-textarea').value;
+  saveState(state);
+});
 
 dropZone.addEventListener('dragover',  e=>{ e.preventDefault(); dropZone.classList.add('drag-over'); });
 dropZone.addEventListener('dragleave', ()=>dropZone.classList.remove('drag-over'));
@@ -1191,6 +1269,62 @@ function showUploadError(msg){
 }
 function clearUploadError(){ uploadErr.style.display = 'none'; }
 
+function contextFromReviewFields(){
+  return {
+    subject: $('#ctx-subject').value.trim(),
+    type:    $('#ctx-type').value,
+    topic:   $('#ctx-topic').value.trim(),
+    notes:   $('#ctx-notes').value.trim(),
+  };
+}
+
+function setReviewFromParagraphs(sourceName, paragraphs, truncated, draftText){
+  currentParagraphs = paragraphs;
+  currentDraftText = draftText || paragraphs.join('\n\n');
+  state.draftText = currentDraftText;
+  saveState(state);
+  reviewHasRun = false;
+  resetReviewProgress();
+  clearChat();
+  renderDocument(sourceName, paragraphs, truncated);
+  renderContextBar();
+  $('#mode-change-notice').style.display = 'none';
+  $('#draft-stale-notice').classList.remove('visible');
+  showReviewScreen();
+}
+
+async function handleDraftStart(){
+  clearUploadError();
+  const text = $('#draft-textarea').value;
+  if(!text.trim()){
+    showUploadError('Paste some draft text first.');
+    return;
+  }
+
+  state.context = contextFromReviewFields();
+  state.draftText = text;
+  saveState(state);
+  $('#draft-start-btn').disabled = true;
+
+  try{
+    const res = await fetch('/api/draft', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text})
+    });
+    const data = await res.json();
+    if(!res.ok){
+      showUploadError(data.error || 'Could not read this draft.');
+      return;
+    }
+    setReviewFromParagraphs('Pasted draft', data.paragraphs, data.truncated, text.trim());
+  }catch(e){
+    showUploadError('Could not reach the server. Is app.py running?');
+  } finally {
+    $('#draft-start-btn').disabled = false;
+  }
+}
+
 async function handleUpload(file){
   clearUploadError();
   dropZone.classList.add('drag-over');
@@ -1199,12 +1333,7 @@ async function handleUpload(file){
   icon.textContent = '⏳';
 
   // capture context fields before switching screens
-  state.context = {
-    subject: $('#ctx-subject').value.trim(),
-    type:    $('#ctx-type').value,
-    topic:   $('#ctx-topic').value.trim(),
-    notes:   $('#ctx-notes').value.trim(),
-  };
+  state.context = contextFromReviewFields();
   saveState(state);
 
   const fd = new FormData();
@@ -1213,15 +1342,8 @@ async function handleUpload(file){
     const res = await fetch('/api/upload', {method:'POST', body:fd});
     const data = await res.json();
     if(!res.ok){ showUploadError(data.error || 'Upload failed'); icon.textContent=origIcon; dropZone.classList.remove('drag-over'); return; }
-    currentParagraphs = data.paragraphs;
     console.log(`[StudyBuddy] Upload complete — ${data.paragraphs.length} paragraphs, truncated=${data.truncated}, chars=${data.char_count}`);
-    reviewHasRun = false;
-    resetReviewProgress();
-    clearChat();
-    renderDocument(file.name, data.paragraphs, data.truncated);
-    renderContextBar();
-    $('#mode-change-notice').style.display = 'none';
-    showReviewScreen();
+    setReviewFromParagraphs(file.name, data.paragraphs, data.truncated, data.paragraphs.join('\n\n'));
   }catch(e){
     showUploadError('Could not reach the server. Is app.py running?');
   } finally {
@@ -1284,6 +1406,11 @@ function renderDocument(filename, paragraphs, truncated){
   $('#doc-filename').textContent = filename;
   const banner = $('#truncation-banner');
   banner.style.display = truncated ? 'block' : 'none';
+  $('#draft-editor').value = currentDraftText || paragraphs.join('\n\n');
+  $('#draft-editor').style.height = 'auto';
+  renderParagraphList(paragraphs);
+}
+function renderParagraphList(paragraphs){
   const list = $('#para-list');
   list.innerHTML = '';
   paragraphs.forEach((p, i)=>{
@@ -1296,6 +1423,32 @@ function renderDocument(filename, paragraphs, truncated){
     list.appendChild(div);
   });
 }
+function parseDraftTextClient(text){
+  const normalized = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if(!normalized) return [];
+  const blocks = normalized.split(/\n\s*\n+/).map(p=>p.trim()).filter(Boolean);
+  if(blocks.length > 1) return blocks;
+  return normalized.split('\n').map(line=>line.trim()).filter(Boolean);
+}
+function syncDraftFromEditor(){
+  const text = $('#draft-editor').value;
+  const paragraphs = parseDraftTextClient(text);
+  const hadFeedback = reviewHasRun || reviewComments.length;
+  currentDraftText = text;
+  currentParagraphs = paragraphs;
+  state.draftText = text;
+  saveState(state);
+  if(hadFeedback){
+    reviewHasRun = false;
+    resetReviewProgress();
+    clearChat();
+    $('#draft-stale-notice').classList.add('visible');
+  }
+  renderParagraphList(paragraphs);
+  updateReviewButton();
+  updateProgressLabel();
+}
+$('#draft-editor').addEventListener('input', syncDraftFromEditor);
 function highlightPara(idx){
   $$('.para.active-para').forEach(el=>el.classList.remove('active-para'));
   const el = $('#para-' + idx);
@@ -1340,13 +1493,13 @@ function updateReviewButton(){
   const btn = $('#run-btn');
   const label = btn.querySelector('.run-label');
   if(fullReviewComplete){
-    label.textContent = 'Review complete';
+    label.textContent = state.mode === 'grading' ? 'Grading complete' : 'Feedback complete';
     btn.disabled = true;
   } else if(reviewCursor === 0){
-    label.textContent = state.mode === 'grading' ? 'Run Grading' : 'Run Review';
-    btn.disabled = false;
+    label.textContent = state.mode === 'grading' ? 'Run grading' : 'Get feedback';
+    btn.disabled = !currentParagraphs.length;
   } else {
-    label.textContent = state.mode === 'grading' ? 'Grade further' : 'Review further';
+    label.textContent = state.mode === 'grading' ? 'Grade further' : 'More feedback';
     btn.disabled = false;
   }
 }
@@ -1357,9 +1510,9 @@ function updateProgressLabel(){
   if(!total || reviewCursor === 0){
     el.textContent = '';
   } else if(fullReviewComplete){
-    el.textContent = `Reviewed all ${total} paragraphs`;
+    el.textContent = `Covered all ${total} paragraphs`;
   } else {
-    el.textContent = `Reviewed ${reviewCursor} of ${total} paragraphs`;
+    el.textContent = `Covered ${reviewCursor} of ${total} paragraphs`;
   }
 }
 
@@ -1483,7 +1636,7 @@ function setStreamingUI(on, from, to){
   lbl.style.display = on ? 'inline' : 'none';
   if(on){
     const range = (from !== undefined) ? ` paragraphs ${from}–${to}` : '';
-    lbl.childNodes[0].textContent = (state.mode === 'grading' ? 'Marking' : 'Reviewing') + range + '…';
+    lbl.childNodes[0].textContent = (state.mode === 'grading' ? 'Marking' : 'Reading') + range + '…';
   }
 }
 
@@ -1499,7 +1652,7 @@ function renderSummary(obj){
   sc.innerHTML = `
     <div class="summary-header">
       ${hasGrade ? `<div class="grade-badge">${esc(obj.overall_grade)}</div>` : ''}
-      <div><div class="summary-label">${hasGrade ? 'Overall Grade' : 'Supervisor Summary'}</div></div>
+      <div><div class="summary-label">${hasGrade ? 'Overall Grade' : 'Coach Summary'}</div></div>
     </div>
     <div class="summary-text">${esc(obj.summary_text || '')}</div>
   `;
